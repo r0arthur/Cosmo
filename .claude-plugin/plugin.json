@@ -1,0 +1,8 @@
+{
+  "name": "cosmo",
+  "version": "0.1.0",
+  "description": "Claude-Code-based security review tool (MVP: static pre-filter + LLM review over a diff, with a two-tier config trust model and a fail-closed public-comment gate). Build steps 1-6 of the cosmo architecture.",
+  "author": {
+    "name": "cosmo"
+  }
+}

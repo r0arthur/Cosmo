@@ -1,0 +1,23 @@
+# cosmo.yaml — checked into the repo being scanned.
+#
+# TRUST TIERS (architecture §15/§16):
+#   [pref]   repo overrides operator config
+#   [safety] operator/org is the ceiling; a repo may only TIGHTEN these, never
+#            loosen them. Loosening values are clamped back at config-load and a
+#            warning is emitted. external_targets / disclosure / triggers are
+#            operator-only and ignored here entirely.
+
+threshold: medium                    # [pref]
+ignore_paths:                        # [pref]
+  - "vendor/**"
+  - "**/*.generated.*"
+
+providers:                           # [pref] — pick your model
+  claude: { default: true }
+
+sandbox:                             # [safety] — tighten only
+  network: none                      #   may stay 'none'; cannot open to bridge/host
+  timeout_seconds: 120               #   may lower below the operator ceiling; cannot raise
+
+fuzzing:                             # [safety] — tighten only (fuzzing is not in the MVP)
+  max_duration: "2h"                 #   may lower; cannot raise past the operator ceiling

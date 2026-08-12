@@ -1,0 +1,73 @@
+# cosmo (MVP)
+
+A Claude-Code-based security review tool. This is the **MVP scaffold — build
+steps 1–6** of [`../cosmo-architecture.md`](../cosmo-architecture.md): a
+diff-driven reviewer that runs a static pre-filter, hands its output to an LLM
+review (Claude default), suppresses known findings, and renders CLI / SARIF /
+PR-comment output behind a fail-closed disclosure gate.
+
+Deliberately **out of scope** (later build steps, each a separate product behind
+the gate): the dynamic-analysis sandbox (§6), zero-day fuzzing (§7), and
+authorized external-target mode (§9). None of those code paths exist here.
+
+## What's implemented
+
+| Step | Area | Status |
+|---|---|---|
+| 1 | Core engine `run_review(target, config)` + built-in Claude provider | real |
+| 2 | Config + severity, **two-tier trust model** (RISK-01) | real, tested |
+| 3 | Diff resolver — local `git diff` + GitHub PR via `gh` | real |
+| 4 | Output adapters (CLI / SARIF / PR) + **fail-closed gate** (RISK-05) | real, tested |
+| 5 | Waiver/baseline — **content-based fingerprint** (RISK-07) | real, tested |
+| 6 | Static pre-filter — semgrep, gitleaks (dep-audit stubbed) | real (tools optional) |
+
+The three load-bearing safety properties from the design review are implemented
+and unit-tested: a scanned repo cannot loosen safety-tier config, the public
+gate withholds by default on unknown sensitivity, and the waiver fingerprint
+survives line shifts without suppressing genuinely new instances.
+
+## Install & run
+
+```bash
+pip install -e .            # core (PyYAML only)
+pip install -e '.[claude]'  # + Anthropic SDK for the LLM stage
+export ANTHROPIC_API_KEY=…  # optional; without it the LLM stage is skipped, not failed
+
+cosmo review .                         # local working-tree diff
+cosmo review owner/repo#123            # a GitHub PR (needs the gh CLI)
+cosmo review . --format sarif          # CI output
+cosmo review . --format pr             # preview the gated public comment
+```
+
+The static tools (`semgrep`, `gitleaks`) are optional — if absent, that stage is
+listed under `skipped:` rather than failing the scan.
+
+### Waivers
+
+```bash
+cosmo review .                  # note a finding's fingerprint in the output
+cosmo waive . <fingerprint> --reason "false positive: test fixture"
+cosmo baseline .                # list waived
+cosmo baseline . --unwaive <fingerprint>
+```
+
+## Config trust tiers (§15/§16)
+
+`cosmo.yaml` lives in the repo under scan and is **untrusted**. Preference keys
+(threshold, ignore_paths, providers) override the operator config; safety keys
+(`sandbox.*`, `fuzzing.*`, `external_targets.*`, …) can only be *tightened* by a
+repo — loosening values are clamped and warned at load. Operator/org config is
+the ceiling, supplied via `--operator-config` or `COSMO_OPERATOR_CONFIG`. See
+[`cosmo.example.yaml`](cosmo.example.yaml).
+
+## As a Claude Code plugin
+
+Ships with `.claude-plugin/plugin.json` and a `/cosmo-review` command
+(`commands/cosmo-review.md`). §17: cosmo depends on Claude Code, it does not fork
+it.
+
+## Tests
+
+```bash
+pip install -e '.[dev]' && pytest
+```

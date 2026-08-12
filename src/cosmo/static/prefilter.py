@@ -1,0 +1,109 @@
+"""Static pre-filter (architecture §5, build step 6).
+
+Deterministic, cheap, high-confidence first pass that runs BEFORE the LLM stage;
+its output is passed forward as context so the model doesn't re-derive what a
+tool already caught (§5, §15 cost control).
+
+Each runner is optional: if the tool isn't installed the stage is recorded as
+skipped rather than failing the scan. Dependency auditing (npm audit / pip-audit
+/ osv-scanner) is a documented stub — the interface is here, wired into the same
+Finding shape, ready to fill in.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+from ..findings import ConfirmationStatus, Finding
+from ..severity import Severity
+
+
+def run_static_prefilter(target_dir: str) -> tuple[list[Finding], list[str]]:
+    """Returns (findings, skipped_stages)."""
+    findings: list[Finding] = []
+    skipped: list[str] = []
+    root = Path(target_dir)
+    if root.is_file():
+        root = root.parent
+
+    for name, runner in (("semgrep", _run_semgrep), ("gitleaks", _run_gitleaks)):
+        if not shutil.which(name):
+            skipped.append(f"static:{name} (not installed)")
+            continue
+        try:
+            findings += runner(str(root))
+        except Exception as exc:  # a broken tool run shouldn't sink the whole scan
+            skipped.append(f"static:{name} (error: {exc})")
+
+    # Dependency audit — STUB (§5). Wire npm audit / pip-audit / osv-scanner here,
+    # mapping each advisory to a Finding(source="static", category="CWE-1104", ...).
+    skipped.append("static:dep-audit (stub — not implemented in MVP)")
+
+    return findings, skipped
+
+
+def _sh(cmd: list[str]) -> str:
+    # These scanners exit non-zero when they find issues; don't raise on that.
+    return subprocess.run(cmd, capture_output=True, text=True).stdout
+
+
+def _run_semgrep(root: str) -> list[Finding]:
+    out = _sh(["semgrep", "--config", "auto", "--json", "--quiet", root])
+    data = json.loads(out or "{}")
+    findings: list[Finding] = []
+    for i, r in enumerate(data.get("results", [])):
+        extra = r.get("extra", {})
+        meta = extra.get("metadata", {})
+        cwe = meta.get("cwe")
+        cwe = cwe[0] if isinstance(cwe, list) and cwe else cwe
+        findings.append(
+            Finding(
+                id=f"static-semgrep-{i}",
+                title=extra.get("message", r.get("check_id", "semgrep finding"))[:200],
+                severity=Severity.parse(extra.get("severity", "medium")),
+                source="static",
+                file=r.get("path", ""),
+                line=int(r.get("start", {}).get("line", 0) or 0),
+                confidence=0.7,
+                confirmation_status=ConfirmationStatus.UNCONFIRMED,
+                category=str(cwe) if cwe else None,
+                evidence=r.get("check_id", ""),
+                remediation=meta.get("fix") or extra.get("fix", "") or "",
+                # Semgrep security rules are security-relevant, but "sensitive enough
+                # to withhold publicly" is decided at the gate by severity+status.
+                security_sensitive=False,
+            )
+        )
+    return findings
+
+
+def _run_gitleaks(root: str) -> list[Finding]:
+    # gitleaks writes its report to a file; use a temp path within the tree's scratch.
+    report = Path(root) / ".cosmo-gitleaks.json"
+    try:
+        _sh(["gitleaks", "detect", "--no-banner", "--report-format", "json",
+             "--report-path", str(report), "--source", root])
+        rows = json.loads(report.read_text()) if report.exists() else []
+    finally:
+        report.unlink(missing_ok=True)
+    findings: list[Finding] = []
+    for i, r in enumerate(rows or []):
+        findings.append(
+            Finding(
+                id=f"static-gitleaks-{i}",
+                title=f"Secret leaked: {r.get('RuleID', 'unknown rule')}",
+                severity=Severity.HIGH,
+                source="static",
+                file=r.get("File", ""),
+                line=int(r.get("StartLine", 0) or 0),
+                confidence=0.9,
+                confirmation_status=ConfirmationStatus.UNCONFIRMED,
+                category="CWE-798",  # use of hard-coded credentials
+                evidence=r.get("Description", ""),
+                remediation="Rotate the exposed secret and remove it from the repo/history.",
+                security_sensitive=True,  # a live secret → gate must withhold public detail
+            )
+        )
+    return findings
