@@ -23,6 +23,9 @@ providers_policy:                    # [safety] — repo may only RAISE sensitiv
   data_sensitivity: normal           #   'sensitive' blocks off-box providers...
   # sensitive_allowed_vendors: []    #   ...except vendors the operator lists here (operator-only)
 
+incremental:                         # [pref] — cache expensive stages between scans
+  enabled: true                      #   set false (or --no-cache) to force a full re-scan
+
 sandbox:                             # [safety] — tighten only
   network: none                      #   may stay 'none'; cannot open to bridge/host
   timeout_seconds: 120               #   may lower below the operator ceiling; cannot raise

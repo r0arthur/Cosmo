@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     p_review.add_argument("--format", choices=["cli", "sarif", "pr"], default="cli")
     p_review.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
+    p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan (§15)")
     p_review.add_argument("--no-color", action="store_true")
 
     p_waive = sub.add_parser("waive", help="waive a finding by fingerprint into the baseline")
@@ -62,6 +63,8 @@ def _cmd_review(args) -> int:
     config = load_config(_target_dir(args.target), operator_config=args.operator_config)
     if args.threshold:
         config.data["threshold"] = args.threshold  # CLI flag beats config for this preference
+    if args.no_cache:
+        config.data.setdefault("incremental", {})["enabled"] = False
 
     report = run_review(args.target, config)
 

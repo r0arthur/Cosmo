@@ -63,6 +63,17 @@ the reviewer and never ground truth** — and prioritization only ever *raises*
 attention (capped), never creating or suppressing a finding. Reading only; never
 posts (§12). Wired into `run_review` for GitHub targets. See `tests/test_context.py`.
 
+**Step 12 — incremental scanning (§15) — is present** (`cosmo.cache`). Caches
+expensive stage results so only what changed since the last scan re-runs;
+`run_review` reuses cached static/model results when the changed files' content
+is unchanged. The design point the review flagged is the **cache-key split**:
+static/LLM key on the changed files' content (+ stage/prompt version), which is
+sound; **dynamic keys on a composite** (file set + dependency-lockfile hash +
+toolchain version), because an unchanged file can still start/stop reproducing
+when a lockfile or toolchain moves — a single file hash would cache a stale
+verdict. Cache lives under `.cosmo/` (gitignored). Prerequisite for the step-13
+git hook to run fast inline. See `tests/test_cache.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
