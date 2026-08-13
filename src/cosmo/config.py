@@ -28,8 +28,11 @@ PREFERENCE_SECTIONS = {
     "threshold", "ignore_paths", "providers", "context_ingestion", "output", "skills",
 }
 SAFETY_SECTIONS = {
-    "sandbox", "fuzzing", "external_targets", "disclosure", "triggers",
+    "sandbox", "fuzzing", "external_targets", "disclosure", "triggers", "providers_policy",
 }
+
+# Data-sensitivity ranked (higher = more restrictive). A repo may only raise it.
+_SENSITIVITY_RANK = {"normal": 0, "sensitive": 1}
 
 # Network modes ranked by restrictiveness (higher = more restrictive/safer).
 _NETWORK_RANK = {"none": 3, "internal": 2, "bridge": 1, "host": 0}
@@ -76,6 +79,13 @@ def _clamp_network(op: Any, repo: Any) -> tuple[Any, bool]:
     return op, True
 
 
+def _clamp_sensitivity(op: Any, repo: Any) -> tuple[Any, bool]:
+    """Repo may only raise data sensitivity (tighten), never lower it."""
+    if _SENSITIVITY_RANK.get(str(repo), -1) >= _SENSITIVITY_RANK.get(str(op), 99):
+        return repo, False
+    return op, True
+
+
 # Only these safety keys accept a repo value at all (by tightening). Every other
 # key under a safety section is operator-only: a repo value is ignored + warned.
 CLAMP_RULES: dict[str, Clamp] = {
@@ -86,6 +96,8 @@ CLAMP_RULES: dict[str, Clamp] = {
     "fuzzing.enabled": _clamp_bool_and,
     "fuzzing.max_duration": _clamp_duration_min,
     "fuzzing.confirm_above": _clamp_duration_min,
+    # A repo may raise data sensitivity (tighten); sensitive_allowed_vendors is operator-only.
+    "providers_policy.data_sensitivity": _clamp_sensitivity,
 }
 
 
@@ -168,6 +180,7 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
     "fuzzing": {"enabled": False, "max_duration": "8h", "confirm_above": "4h"},
     "external_targets": {"require_scope_declaration": True, "rate_limit_source": "scope_declared"},
     "disclosure": {"contact": "security.md", "embargo_days": 90},
+    "providers_policy": {"data_sensitivity": "normal", "sensitive_allowed_vendors": []},
 }
 
 

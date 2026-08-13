@@ -2,10 +2,13 @@
 
 Common shape across backends:  review(diff, context, findings_so_far) -> Finding[]
 
-The MVP ships only the Claude default (built into build step 1). The full
-provider *layer* — hosted alternates, resolution order, ensemble cross-check,
-and the data-governance boundary that governs exporting source to third parties
-— is build step 9, out of MVP scope.
+Each provider self-declares:
+  * `roles`          — which pipeline roles it's eligible for, so a smaller/local
+                       model isn't assumed interchangeable everywhere.
+  * `vendor` /
+    `exports_source` — the data-governance boundary (§8): enabling a hosted
+                       provider exports the target's source to that vendor, which
+                       the resolution layer gates on repo/org data sensitivity.
 """
 from __future__ import annotations
 
@@ -14,10 +17,17 @@ from typing import Protocol, runtime_checkable
 from ..diff import Diff
 from ..findings import Finding
 
+# Pipeline roles a provider can self-declare.
+PRIMARY_REVIEW = "primary_review"
+CROSS_CHECK = "cross_check"
+
 
 @runtime_checkable
 class ModelProvider(Protocol):
     name: str
+    vendor: str            # "anthropic" | "openai" | "deepseek" | "local"
+    exports_source: bool   # True if calling it sends the diff off-box to a third party
+    roles: set[str]
 
     def available(self) -> bool:
         """True if this provider can actually run (SDK importable, key present)."""
