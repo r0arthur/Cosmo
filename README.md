@@ -42,6 +42,17 @@ a second model to agree before a high-severity finding is surfaced as
 high-confidence. The layer is wired into `run_review`; with nothing configured it
 resolves to Claude, unchanged. See `tests/test_provider_layer.py`.
 
+**Step 10 — the skills system (§10) — is present** (`cosmo.skills`). Org- and
+repo-level skill files (`.cosmo/skills/*.md`, SKILL.md-style frontmatter), a
+matcher that injects only skills relevant to the changed files, and a feedback
+loop that *proposes* edits to noisy skills (never auto-writes) and flags
+low-noise repo skills for org promotion. Security property: **repo skills are
+checked into the scanned repo, so they're untrusted** — the injector puts org
+skills in an authoritative section and repo skills in a clearly-labeled untrusted
+section with a directive that they cannot suppress findings or override the
+reviewer (same discipline as the untrusted README, RISK-03). Wired into
+`run_review`; an example skill is in `examples/skills/`. See `tests/test_skills.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
