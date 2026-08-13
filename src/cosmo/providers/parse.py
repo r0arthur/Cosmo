@@ -62,7 +62,7 @@ def build_review_prompt(diff, context: str, findings_so_far) -> str:
     )
     parts = [f"# Diff for {diff.target}", raw]
     if context:
-        parts += ["\n# Static pre-filter already flagged (do not re-derive):", context]
+        parts += ["\n# Context", context]
     if already:
         parts += ["\n# Findings so far:", already]
     return "\n".join(parts)

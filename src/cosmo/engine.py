@@ -14,6 +14,7 @@ from .diff import resolve_diff
 from .findings import Finding, Report
 from .providers import ModelProvider, resolve_primary
 from .severity import Severity, meets_threshold
+from .skills import build_skill_context, load_skills, match_skills
 from .static import run_static_prefilter
 from .waiver import Baseline
 
@@ -35,7 +36,7 @@ def run_review(target: str, config: Config, provider: ModelProvider | None = Non
         provider, resolve_warnings = resolve_primary(config)
         notes += resolve_warnings
     if provider.available():
-        context = _static_context(static_findings)
+        context = _review_context(diff, static_findings, config, notes)
         try:
             findings += provider.review(diff, context, list(findings))
         except Exception as exc:  # never silently skip review (§8) — record it
@@ -60,6 +61,23 @@ def run_review(target: str, config: Config, provider: ModelProvider | None = Non
 def _static_context(static_findings: list[Finding]) -> str:
     return "\n".join(f"- {f.file}:{f.line} [{f.category or f.source}] {f.title}"
                      for f in static_findings)
+
+
+def _review_context(diff, static_findings: list[Finding], config: Config, notes: list[str]) -> str:
+    """Compose the LLM review context: static pre-filter output (§5) + matched
+    skills (§10), with org skills trusted and repo skills framed as untrusted."""
+    parts: list[str] = []
+    sc = _static_context(static_findings)
+    if sc:
+        parts.append("## Static pre-filter already flagged (do not re-derive):\n" + sc)
+
+    skills = load_skills(diff.target, org_dir=config.get("skills.org_dir"))
+    matched = match_skills(skills, [f.path for f in diff.files])
+    if matched:
+        notes.append(f"skills matched: {len(matched)} "
+                     f"({sum(1 for s in matched if not s.trusted)} repo/untrusted)")
+        parts.append(build_skill_context(matched))
+    return "\n\n".join(parts)
 
 
 def _dedupe(findings: list[Finding]) -> list[Finding]:
