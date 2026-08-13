@@ -10,6 +10,7 @@ from .config import load_config
 from .diff import resolve_diff
 from .engine import run_review
 from .output import render_cli, render_pr_comment, render_sarif
+from .triggers import install_hook, render_hook_output, run_git_hook
 from .waiver import Baseline, fingerprint
 
 
@@ -34,6 +35,16 @@ def main(argv: list[str] | None = None) -> int:
     p_base.add_argument("target")
     p_base.add_argument("--unwaive", metavar="FINGERPRINT")
 
+    p_hook = sub.add_parser("hook", help="run the git-hook review over the staged diff (§2)")
+    p_hook.add_argument("--path", default=".", help="repo path (default: cwd)")
+    p_hook.add_argument("--blocking", action="store_true", help="abort the commit on findings")
+    p_hook.add_argument("--operator-config")
+
+    p_install = sub.add_parser("install-hook", help="install a git pre-commit hook that runs cosmo")
+    p_install.add_argument("--path", default=".", help="repo path (default: cwd)")
+    p_install.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"])
+    p_install.add_argument("--blocking", action="store_true")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "review":
@@ -55,6 +66,18 @@ def main(argv: list[str] | None = None) -> int:
             print("no waived findings")
         for fp, meta in b.waived.items():
             print(f"{fp}  {meta.get('reason', '')}")
+        return 0
+    if args.cmd == "hook":
+        config = load_config(args.path, operator_config=args.operator_config)
+        report, code = run_git_hook(
+            config, staged_path=args.path,
+            blocking_override=True if args.blocking else None)
+        print(render_hook_output(report, code))
+        return code
+    if args.cmd == "install-hook":
+        path = install_hook(args.path, hook_type=args.type, blocking=args.blocking)
+        mode = "blocking" if args.blocking else "non-blocking"
+        print(f"installed {mode} {args.type} hook at {path}")
         return 0
     return 2
 

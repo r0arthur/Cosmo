@@ -74,6 +74,21 @@ when a lockfile or toolchain moves — a single file hash would cache a stale
 verdict. Cache lives under `.cosmo/` (gitignored). Prerequisite for the step-13
 git hook to run fast inline. See `tests/test_cache.py`.
 
+**Step 13 — the git hook adapter (§2) — is present** (`cosmo.triggers`). A thin
+caller of `run_review` over the **staged** diff (`git diff --cached`), with the
+§2 defaults: `critical` threshold, short output, opt-in blocking, static + LLM
+only (no sandbox/fuzzing), leaning on the step-12 cache to stay fast. Install it
+with `cosmo install-hook` (writes `.git/hooks/pre-commit`); it runs `cosmo hook`,
+which prints a short summary and — only when `--blocking` — aborts the commit on
+an actionable finding. A non-blocking hook never fails a commit. See
+`tests/test_git_hook.py`.
+
+```bash
+cosmo install-hook            # non-blocking pre-commit hook
+cosmo install-hook --blocking # abort commits on critical findings
+cosmo hook                    # run manually over the staged diff
+```
+
 ## What's implemented
 
 | Step | Area | Status |

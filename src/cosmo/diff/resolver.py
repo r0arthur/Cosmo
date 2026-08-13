@@ -144,11 +144,20 @@ def _whole_tree_as_added(path: Path) -> Diff:
     return Diff(source="local", target=str(path), files=files, raw="")
 
 
+def _resolve_staged(path: Path) -> Diff:
+    """Staged diff (`git diff --cached`) — the git-hook trigger's target (§2)."""
+    raw = _run(["git", "-C", str(path), "diff", "--cached"])
+    return Diff(source="local", target=str(path), files=parse_unified_diff(raw), raw=raw)
+
+
 def resolve_diff(target: str) -> Diff:
     """Entry point: dispatch a target string to the right resolver."""
-    m = _PR_RE.match(target.strip())
+    t = target.strip()
+    if t.startswith("staged:"):
+        return _resolve_staged(Path(t[len("staged:"):] or ".").expanduser())
+    m = _PR_RE.match(t)
     if m:
         repo = m.group("repo") or m.group("repo2")
         number = m.group("n1") or m.group("n2")
         return _resolve_github(repo, number)
-    return _resolve_local(Path(target).expanduser())
+    return _resolve_local(Path(t).expanduser())
