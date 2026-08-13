@@ -53,6 +53,16 @@ section with a directive that they cannot suppress findings or override the
 reviewer (same discipline as the untrusted README, RISK-03). Wired into
 `run_review`; an example skill is in `examples/skills/`. See `tests/test_skills.py`.
 
+**Step 11 — context ingestion (§4) — is present** (`cosmo.context`). Reads
+issues/comments (via `gh`) to prioritize review: extracts security keywords, CVE
+references, stack-trace indicators, and referenced paths into a structured signal
+set, then nudges the confidence of findings located in files those issues call
+out, and surfaces partial-fix hints from closed issues. Two boundaries hold:
+issue text is **attacker-controllable, so it's a signal set — never raw text into
+the reviewer and never ground truth** — and prioritization only ever *raises*
+attention (capped), never creating or suppressing a finding. Reading only; never
+posts (§12). Wired into `run_review` for GitHub targets. See `tests/test_context.py`.
+
 ## What's implemented
 
 | Step | Area | Status |

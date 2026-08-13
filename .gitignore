@@ -21,3 +21,4 @@ env/
 # cosmo runtime state (baseline lives in the scanned repo, not this one)
 .cosmo/
 .cosmo-gitleaks.json
+*.tmp.*
