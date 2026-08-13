@@ -10,6 +10,7 @@ context so the model doesn't re-derive it, then dedupe, then waiver suppression
 from __future__ import annotations
 
 from .config import Config
+from .context import ContextItem, apply_prioritization, build_priority_signals, extract_all, fetch_context
 from .diff import resolve_diff
 from .findings import Finding, Report
 from .providers import ModelProvider, resolve_primary
@@ -19,7 +20,12 @@ from .static import run_static_prefilter
 from .waiver import Baseline
 
 
-def run_review(target: str, config: Config, provider: ModelProvider | None = None) -> Report:
+def run_review(
+    target: str,
+    config: Config,
+    provider: ModelProvider | None = None,
+    context_items: list[ContextItem] | None = None,
+) -> Report:
     diff = resolve_diff(target)
     findings: list[Finding] = []
     skipped: list[str] = []
@@ -50,6 +56,9 @@ def run_review(target: str, config: Config, provider: ModelProvider | None = Non
     baseline = Baseline.load(diff.target)
     findings = baseline.apply(findings, diff)
 
+    # Step 11 — context ingestion: prioritize (never create/suppress) findings.
+    findings = _apply_context(target, diff, findings, config, context_items, notes, skipped)
+
     # Severity floor (step 2 threshold). Waived findings are kept in the report
     # object (counted, not shown) so `--baseline` can list them.
     floor = Severity.parse(config.threshold)
@@ -78,6 +87,32 @@ def _review_context(diff, static_findings: list[Finding], config: Config, notes:
                      f"({sum(1 for s in matched if not s.trusted)} repo/untrusted)")
         parts.append(build_skill_context(matched))
     return "\n\n".join(parts)
+
+
+def _apply_context(target, diff, findings, config, context_items, notes, skipped):
+    """Fetch (or use injected) context, extract signals, and nudge prioritization.
+
+    Only runs for GitHub targets when enabled; degrades gracefully otherwise.
+    Prioritization raises attention on referenced files — it never creates or
+    suppresses a finding (§4)."""
+    if not config.get("context_ingestion", {}).get("issues", True):
+        return findings
+    items = context_items
+    if items is None:
+        if diff.source != "github":
+            return findings
+        items, ctx_skipped = fetch_context(target)
+        skipped += ctx_skipped
+    if not items:
+        return findings
+
+    priority = build_priority_signals(extract_all(items), [f.path for f in diff.files])
+    if priority.path_boosts:
+        notes.append(f"context: prioritized {len(priority.path_boosts)} file(s) from "
+                     f"{len(items)} issue(s)")
+    for hint in priority.partial_fix_hints:
+        notes.append(hint)
+    return apply_prioritization(findings, priority)
 
 
 def _dedupe(findings: list[Finding]) -> list[Finding]:
