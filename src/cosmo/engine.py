@@ -9,6 +9,7 @@ context so the model doesn't re-derive it, then dedupe, then waiver suppression
 """
 from __future__ import annotations
 
+from .cache import Cache, cache_or_run, diff_file_contents, model_key, static_key
 from .config import Config
 from .context import ContextItem, apply_prioritization, build_priority_signals, extract_all, fetch_context
 from .diff import resolve_diff
@@ -31,10 +32,17 @@ def run_review(
     skipped: list[str] = []
     notes: list[str] = list(config.warnings)  # surface config trust-tier clamps to the operator
 
-    # Step 6 — static pre-filter (before the LLM stage, §5).
-    static_findings, static_skipped = run_static_prefilter(diff.target)
+    # Step 12 — incremental cache: only re-run expensive stages when inputs change.
+    cache_on = config.get("incremental", {}).get("enabled", True)
+    cache = Cache.load(diff.target, enabled=cache_on)
+    file_contents = diff_file_contents(diff)
+
+    # Step 6 — static pre-filter (before the LLM stage, §5), cached per changed-file content.
+    static_findings, hit = cache_or_run(
+        cache, static_key(file_contents), lambda: _run_static_recorded(diff.target, skipped))
     findings += static_findings
-    skipped += static_skipped
+    if hit:
+        notes.append("incremental: reused cached static results")
 
     # Step 1 — LLM review. Provider resolved through the layer (§8): resolution
     # order + data-governance gate + fallback to the Claude default.
@@ -43,13 +51,19 @@ def run_review(
         notes += resolve_warnings
     if provider.available():
         context = _review_context(diff, static_findings, config, notes)
+        m_key = model_key(file_contents, provider.name, context)
         try:
-            findings += provider.review(diff, context, list(findings))
+            model_findings, m_hit = cache_or_run(
+                cache, m_key, lambda: provider.review(diff, context, list(findings)))
+            findings += model_findings
+            if m_hit:
+                notes.append(f"incremental: reused cached model:{provider.name} results")
         except Exception as exc:  # never silently skip review (§8) — record it
             skipped.append(f"model:{provider.name} (error: {exc})")
     else:
         skipped.append(f"model:{provider.name} (unavailable — no SDK or ANTHROPIC_API_KEY)")
 
+    cache.save()
     findings = _dedupe(findings)
 
     # Step 5 — waiver/baseline suppression (fingerprints stamped here).
@@ -65,6 +79,13 @@ def run_review(
     findings = [f for f in findings if f.waived or meets_threshold(f.severity, floor)]
 
     return Report(target=diff.target, findings=findings, skipped_stages=skipped, notes=notes)
+
+
+def _run_static_recorded(target: str, skipped: list[str]) -> list[Finding]:
+    """Run the static pre-filter, appending its skipped-stage notes."""
+    static_findings, static_skipped = run_static_prefilter(target)
+    skipped += static_skipped
+    return static_findings
 
 
 def _static_context(static_findings: list[Finding]) -> str:

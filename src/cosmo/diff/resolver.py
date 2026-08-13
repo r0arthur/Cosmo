@@ -117,9 +117,20 @@ def _is_git_repo(path: Path) -> bool:
         return False
 
 
+# Directories cosmo never scans in whole-tree mode: VCS internals, cosmo's own
+# runtime state (cache/baseline live here), and common build/vendor noise.
+_TREE_EXCLUDE = {".git", ".cosmo", "__pycache__", "node_modules", ".venv", "venv"}
+
+
 def _whole_tree_as_added(path: Path) -> Diff:
     files: list[DiffFile] = []
-    paths = [path] if path.is_file() else [p for p in path.rglob("*") if p.is_file()]
+    if path.is_file():
+        paths = [path]
+    else:
+        paths = [
+            p for p in path.rglob("*")
+            if p.is_file() and not (_TREE_EXCLUDE & set(p.relative_to(path).parts))
+        ]
     for p in paths:
         try:
             text = p.read_text(errors="replace")
