@@ -10,6 +10,13 @@ Deliberately **out of scope** (later build steps, each a separate product behind
 the gate): the dynamic-analysis sandbox (§6), zero-day fuzzing (§7), and
 authorized external-target mode (§9). None of those code paths exist here.
 
+**Step 7 — the egress broker (§9a) — is present** (`cosmo.broker`), built ahead
+of the sandbox/external-target modes that depend on it. It is the single guarded
+network chokepoint: mode gate → scope resolution on the resolved host (redirects
+re-checked per hop) → one global rate-limit budget → logging. It is not wired
+into the MVP pipeline, since steps 1–6 do no untrusted or external egress; it is
+the boundary those later steps will stand behind. See `tests/test_broker.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
