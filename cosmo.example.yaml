@@ -14,6 +14,14 @@ ignore_paths:                        # [pref]
 
 providers:                           # [pref] — pick your model
   claude: { default: true }
+  # codex:    { requires_key: OPENAI_API_KEY }
+  # deepseek: { requires_key: DEEPSEEK_API_KEY }
+  # llama:    { local: true, endpoint: "http://localhost:11434/v1" }
+  # on_failure: fallback              # fallback (to Claude) | hard_fail
+
+providers_policy:                    # [safety] — repo may only RAISE sensitivity
+  data_sensitivity: normal           #   'sensitive' blocks off-box providers...
+  # sensitive_allowed_vendors: []    #   ...except vendors the operator lists here (operator-only)
 
 sandbox:                             # [safety] — tighten only
   network: none                      #   may stay 'none'; cannot open to bridge/host

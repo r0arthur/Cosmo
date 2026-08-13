@@ -12,7 +12,7 @@ from __future__ import annotations
 from .config import Config
 from .diff import resolve_diff
 from .findings import Finding, Report
-from .providers import ModelProvider, get_default_provider
+from .providers import ModelProvider, resolve_primary
 from .severity import Severity, meets_threshold
 from .static import run_static_prefilter
 from .waiver import Baseline
@@ -29,8 +29,11 @@ def run_review(target: str, config: Config, provider: ModelProvider | None = Non
     findings += static_findings
     skipped += static_skipped
 
-    # Step 1 — LLM review, Claude default. Static output becomes context.
-    provider = provider or get_default_provider()
+    # Step 1 — LLM review. Provider resolved through the layer (§8): resolution
+    # order + data-governance gate + fallback to the Claude default.
+    if provider is None:
+        provider, resolve_warnings = resolve_primary(config)
+        notes += resolve_warnings
     if provider.available():
         context = _static_context(static_findings)
         try:

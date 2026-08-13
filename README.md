@@ -29,6 +29,19 @@ and `not_reproducible` only feeds the waiver when a capable probe was used
 to `unconfirmed` rather than blocking the review. Invoked explicitly via
 `confirm_findings` — never on the MVP default path. See `tests/test_sandbox.py`.
 
+**Step 9 — the multi-model provider layer (§8) — is present** (`cosmo.providers`),
+on top of the built-in Claude default. Hosted alternates (Codex/DeepSeek) and
+local Llama share one OpenAI-compatible implementation; `resolve_primary`
+applies the resolution order (session → CLI → repo → org → Claude) and falls
+back to Claude on an unavailable provider rather than skipping review. The
+**data-governance gate** (`vendor_allowed`) enforces that at
+`data_sensitivity: sensitive` (a safety-tier setting a repo can only raise), only
+local providers and operator-accepted vendors are eligible — a sensitive repo
+never has its source fanned out to a third party. Optional `cross_check` requires
+a second model to agree before a high-severity finding is surfaced as
+high-confidence. The layer is wired into `run_review`; with nothing configured it
+resolves to Claude, unchanged. See `tests/test_provider_layer.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
