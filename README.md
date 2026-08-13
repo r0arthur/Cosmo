@@ -17,6 +17,18 @@ re-checked per hop) → one global rate-limit budget → logging. It is not wire
 into the MVP pipeline, since steps 1–6 do no untrusted or external egress; it is
 the boundary those later steps will stand behind. See `tests/test_broker.py`.
 
+**Step 8 — the dynamic analysis sandbox (§6) — is present** (`cosmo.sandbox`),
+the first consumer of the broker. It confirms suspected findings against a build
+cosmo itself provisioned, in a hardened rootless container (read-only source,
+no network by default, no docker socket, clean env, resource caps — all in
+`build_run_args`, unit-tested). All egress runs through the broker in SANDBOX
+mode. Provisioning happens in a narrow egress window with lifecycle scripts
+suppressed (RISK-02), LLM-drafted commands are allowlist-validated (RISK-03),
+and `not_reproducible` only feeds the waiver when a capable probe was used
+(RISK-04). Teardown runs even on crash; a provisioning failure degrades findings
+to `unconfirmed` rather than blocking the review. Invoked explicitly via
+`confirm_findings` — never on the MVP default path. See `tests/test_sandbox.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
