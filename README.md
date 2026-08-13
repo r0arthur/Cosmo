@@ -89,6 +89,20 @@ cosmo install-hook --blocking # abort commits on critical findings
 cosmo hook                    # run manually over the staged diff
 ```
 
+**Step 14 — the GitHub Action adapter (§2) — is present** (`cosmo.triggers`). A
+thin caller of `run_review` for the PR-diff trigger: `medium+` threshold, SARIF
+output for the Security tab, a PR comment, and configurable blocking. This is
+where the **fail-closed gate (RISK-05) governs a real outbound post** — the PR
+comment is rendered through `render_pr_comment`, so a confirmed/sensitive finding
+(and its PoC) is withheld and only a generic acknowledgment is posted; the
+finding still lands in SARIF for the operator. Tested that a hardcoded-secret
+finding and a confirmed-critical RCE never appear in the posted body. A ready-to-
+copy workflow is in `examples/github/`. See `tests/test_github_action.py`.
+
+```bash
+cosmo action "owner/repo#123" --post --sarif cosmo.sarif   # (runs in CI)
+```
+
 ## What's implemented
 
 | Step | Area | Status |

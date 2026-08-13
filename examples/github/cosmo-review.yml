@@ -1,0 +1,41 @@
+# Example GitHub Actions workflow: run cosmo on every pull request (architecture §2).
+# Copy to .github/workflows/ in the repo you want reviewed.
+name: cosmo security review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write   # required only if you use --post
+
+jobs:
+  cosmo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cosmo
+        run: pip install -e .        # or: pip install cosmo, once published
+
+      - name: Review the PR
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          cosmo action "${{ github.repository }}#${{ github.event.number }}"
+          --post --sarif cosmo.sarif
+
+      # Optional: surface findings in the Security tab. The public-comment gate
+      # already withheld confirmed/sensitive detail from --post above.
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: cosmo.sarif
