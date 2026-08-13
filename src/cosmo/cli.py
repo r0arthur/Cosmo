@@ -10,6 +10,7 @@ from .config import load_config
 from .diff import resolve_diff
 from .engine import run_review
 from .output import render_cli, render_pr_comment, render_sarif
+from .store import TrendStore, map_report
 from .triggers import install_hook, render_hook_output, run_git_hook, run_github_action
 from .waiver import Baseline, fingerprint
 
@@ -25,6 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
     p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan (§15)")
     p_review.add_argument("--no-color", action="store_true")
+    p_review.add_argument("--record", action="store_true",
+                          help="record this scan in the trend store (§14) for lifecycle tracking")
 
     p_waive = sub.add_parser("waive", help="waive a finding by fingerprint into the baseline")
     p_waive.add_argument("target")
@@ -51,6 +54,11 @@ def main(argv: list[str] | None = None) -> int:
     p_action.add_argument("--sarif", metavar="FILE", help="write SARIF to FILE")
     p_action.add_argument("--no-block", action="store_true", help="don't fail the job on findings")
     p_action.add_argument("--operator-config")
+
+    p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup (§14/§15)")
+    p_trends.add_argument("target", help="local path previously scanned with --record")
+    p_trends.add_argument("--disclosure", action="store_true",
+                          help="show the coordinated-disclosure queue (§13) instead")
 
     args = parser.parse_args(argv)
 
@@ -95,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.sarif:
             print(f"wrote SARIF to {args.sarif}")
         return code
+    if args.cmd == "trends":
+        return _cmd_trends(args)
     return 2
 
 
@@ -114,8 +124,55 @@ def _cmd_review(args) -> int:
     elif args.format == "pr":
         print(render_pr_comment(report))
 
+    # The store is a side layer: run_review stays pure, the CLI records the scan.
+    if args.record:
+        store = TrendStore.for_target(args.target)
+        try:
+            s = store.record_scan(args.target, report.findings)
+            print(f"recorded: {s.introduced} new, {s.reopened} reopened, "
+                  f"{s.fixed} fixed, {s.open_total} open")
+        finally:
+            store.close()
+
     # Non-zero exit if any non-waived finding survived the threshold (CI-friendly).
     return 1 if any(not f.waived for f in report.findings) else 0
+
+
+def _cmd_trends(args) -> int:
+    store = TrendStore.for_target(args.target)
+    try:
+        if args.disclosure:
+            rows = store.disclosure_queue(args.target)
+            if not rows:
+                print("disclosure queue empty")
+                return 0
+            for r in rows:
+                print(f"[{r['disclosure_status']}] {r['severity']}  {r['title']}  ({r['fingerprint']})")
+            return 0
+
+        open_rows = store.open_findings(args.target)
+        print(f"open findings: {len(open_rows)}")
+
+        trend = store.weekly_trend(args.target)
+        if trend:
+            print("\nweekly:")
+            for week, d in trend.items():
+                print(f"  {week}: +{d['introduced']} introduced, -{d['fixed']} fixed")
+
+        noisy = store.noisiest_rules(args.target)
+        if noisy:
+            print("\nnoisiest rules (feeds §10):")
+            for cat, n, frac in noisy:
+                print(f"  {cat}: {n} findings, {frac:.0%} waived")
+
+        rollup = map_report(open_rows)
+        if rollup:
+            print("\nOWASP Top 10 (open):")
+            for row in rollup:
+                print(f"  {row.owasp_id} {row.name}: {row.count}")
+        return 0
+    finally:
+        store.close()
 
 
 def _target_dir(target: str) -> str:

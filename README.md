@@ -103,6 +103,24 @@ copy workflow is in `examples/github/`. See `tests/test_github_action.py`.
 cosmo action "owner/repo#123" --post --sarif cosmo.sarif   # (runs in CI)
 ```
 
+**Step 15 — the trend + findings store (§14) and compliance mapping (§15) — is
+present** (`cosmo.store`). A lightweight SQLite side layer: `run_review` stays
+pure, and a trigger (or `cosmo review --record`) records each scan so cosmo can
+report a finding's lifecycle — introduced, reopened, or fixed over time — per
+target. It also computes the **noisiest rules** (categories with a high waived
+fraction), which is the signal that feeds the §10 skills feedback loop, and holds
+the coordinated-disclosure queue (§13). The compliance layer rolls findings up to
+**OWASP Top 10 2021** by CWE; unmapped CWEs fall through to A04 (Insecure Design)
+rather than vanishing from the rollup, and an operator can layer an org mapping on
+top without editing code. It only ever *reports* — it never changes a finding's
+severity or whether it surfaces. See `tests/test_trends.py`.
+
+```bash
+cosmo review . --record       # record this scan's findings for trend tracking
+cosmo trends .                # lifecycle, noisiest rules, OWASP rollup
+cosmo trends . --disclosure   # the coordinated-disclosure queue
+```
+
 ## What's implemented
 
 | Step | Area | Status |
