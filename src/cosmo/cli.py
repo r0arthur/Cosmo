@@ -10,7 +10,7 @@ from .config import load_config
 from .diff import resolve_diff
 from .engine import run_review
 from .output import render_cli, render_pr_comment, render_sarif
-from .triggers import install_hook, render_hook_output, run_git_hook
+from .triggers import install_hook, render_hook_output, run_git_hook, run_github_action
 from .waiver import Baseline, fingerprint
 
 
@@ -44,6 +44,13 @@ def main(argv: list[str] | None = None) -> int:
     p_install.add_argument("--path", default=".", help="repo path (default: cwd)")
     p_install.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"])
     p_install.add_argument("--blocking", action="store_true")
+
+    p_action = sub.add_parser("action", help="GitHub Action trigger: review a PR (§2)")
+    p_action.add_argument("target", help="PR ref 'owner/repo#123'")
+    p_action.add_argument("--post", action="store_true", help="post the gated PR comment")
+    p_action.add_argument("--sarif", metavar="FILE", help="write SARIF to FILE")
+    p_action.add_argument("--no-block", action="store_true", help="don't fail the job on findings")
+    p_action.add_argument("--operator-config")
 
     args = parser.parse_args(argv)
 
@@ -79,6 +86,15 @@ def main(argv: list[str] | None = None) -> int:
         mode = "blocking" if args.blocking else "non-blocking"
         print(f"installed {mode} {args.type} hook at {path}")
         return 0
+    if args.cmd == "action":
+        config = load_config(".", operator_config=args.operator_config)
+        report, code = run_github_action(
+            config, args.target, post=args.post, sarif_path=args.sarif,
+            blocking_override=False if args.no_block else None)
+        print(render_cli(report, color=False))
+        if args.sarif:
+            print(f"wrote SARIF to {args.sarif}")
+        return code
     return 2
 
 
