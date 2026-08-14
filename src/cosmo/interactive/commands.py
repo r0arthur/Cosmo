@@ -162,6 +162,37 @@ def _cmd_status(session: Session, args) -> str:
             f"campaigns: {camps}")
 
 
+def _cmd_scope(session: Session, args) -> str:
+    """[program=… includes=a,b excludes=c rate=N] — declare an authorized target (§9)"""
+    from ..external import ScopeError
+    ext = session.external_mode()
+    if not args:
+        if ext.scope is None:
+            return "no scope declared; external recon is refused until you /scope"
+        s = ext.scope
+        return (f"scope: {s.program}\n  includes: {', '.join(s.includes)}\n"
+                f"  excludes: {', '.join(s.excludes) or 'none'}\n"
+                f"  rate: {s.rate_limit_per_sec}/s")
+    decl: dict = {}
+    for tok in args:
+        if "=" not in tok:
+            continue
+        k, v = tok.split("=", 1)
+        if k in ("includes", "excludes"):
+            decl[k] = [x for x in v.split(",") if x]
+        elif k in ("rate", "rate_limit_per_sec"):
+            decl["rate_limit_per_sec"] = float(v)
+        else:
+            decl[k] = v
+    try:
+        s = ext.declare(decl)
+    except ScopeError as exc:
+        return f"scope refused: {exc}"
+    return (f"scope declared: {s.program} ({len(s.includes)} in-scope, "
+            f"{len(s.excludes)} excluded, {s.rate_limit_per_sec}/s). "
+            f"every request is logged.")
+
+
 def _cmd_disclose(session: Session, args) -> str:
     """<finding-id> — draft + queue a coordinated disclosure (§13); sends nothing"""
     from ..disclose import NotEligible, find_contact, queue_disclosure
@@ -201,8 +232,8 @@ def _cmd_report(session: Session, args) -> str:
     return render_cli(report, color=False)
 
 
-# Order defines /help output. /disclose (§13) is wired in as of step 18; /scope
-# (§9, step 19) registers here once that step lands.
+# Order defines /help output. /disclose (§13) landed in step 18 and /scope (§9)
+# in step 19 — the full session command set from the architecture.
 _COMMANDS = {
     "help": _cmd_help,
     "status": _cmd_status,
@@ -213,6 +244,7 @@ _COMMANDS = {
     "confirm": _cmd_confirm,
     "waive": _cmd_waive,
     "baseline": _cmd_baseline,
+    "scope": _cmd_scope,
     "disclose": _cmd_disclose,
     "report": _cmd_report,
 }

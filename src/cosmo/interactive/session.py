@@ -28,9 +28,17 @@ class Session:
     fuzz_duration: int | None = None           # /duration — capped by fuzzing.max_duration
     running_campaigns: dict[str, int] = field(default_factory=dict)  # name -> remaining s
     notes: list[str] = field(default_factory=list)
+    external=None                              # /scope — lazily created ExternalTargetMode
     # Injected so the REPL stays hermetic in tests; defaults to the real engine.
     scanner=None
     confirmer=None
+
+    def external_mode(self):
+        """The §9 external-target driver for this session, created on first use."""
+        if self.external is None:
+            from ..external import ExternalTargetMode
+            self.external = ExternalTargetMode(config=self.config)
+        return self.external
 
     def effective_threshold(self) -> str:
         return self.threshold_override or self.config.threshold

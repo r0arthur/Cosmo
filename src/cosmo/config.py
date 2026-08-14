@@ -178,7 +178,8 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
     "providers": {"claude": {"default": True}},
     "sandbox": {"enabled": True, "network": "none", "timeout_seconds": 300, "confirmation": True},
     "fuzzing": {"enabled": False, "max_duration": "8h", "confirm_above": "4h"},
-    "external_targets": {"require_scope_declaration": True, "rate_limit_source": "scope_declared"},
+    "external_targets": {"enabled": False, "require_scope_declaration": True,
+                         "rate_limit_source": "scope_declared"},
     "disclosure": {"contact": "security.md", "embargo_days": 90},
     "providers_policy": {"data_sensitivity": "normal", "sensitive_allowed_vendors": []},
 }
