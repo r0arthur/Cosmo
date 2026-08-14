@@ -55,6 +55,15 @@ def main(argv: list[str] | None = None) -> int:
     p_action.add_argument("--no-block", action="store_true", help="don't fail the job on findings")
     p_action.add_argument("--operator-config")
 
+    p_fuzz = sub.add_parser("fuzz", help="manual-only zero-day fuzzing campaign (§7)")
+    p_fuzz.add_argument("target", help="local repo path (fuzzes cosmo's own sandbox build only)")
+    p_fuzz.add_argument("--language", default="python",
+                        help="entry-point language, to select the integrated engine")
+    p_fuzz.add_argument("--duration", help="hard time cap, e.g. 30m/2h (required — never defaults)")
+    p_fuzz.add_argument("--confirm", action="store_true",
+                        help="acknowledge a duration above fuzzing.confirm_above")
+    p_fuzz.add_argument("--operator-config")
+
     p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup (§14/§15)")
     p_trends.add_argument("target", help="local path previously scanned with --record")
     p_trends.add_argument("--disclosure", action="store_true",
@@ -103,9 +112,46 @@ def main(argv: list[str] | None = None) -> int:
         if args.sarif:
             print(f"wrote SARIF to {args.sarif}")
         return code
+    if args.cmd == "fuzz":
+        return _cmd_fuzz(args)
     if args.cmd == "trends":
         return _cmd_trends(args)
     return 2
+
+
+def _cmd_fuzz(args) -> int:
+    from .config import _parse_duration
+    from .fuzz import select_engine
+    from .fuzz.campaign import ConfirmationRequired, DurationNotSet, resolve_duration
+    from .fuzz.engines import NoEngineForLanguage
+
+    config = load_config(_target_dir(args.target), operator_config=args.operator_config)
+    if not config.get("fuzzing.enabled", False):
+        print("fuzzing is disabled in config (safety tier); enable fuzzing.enabled to run")
+        return 2
+    try:
+        max_seconds = resolve_duration(config, args.duration, confirmed=args.confirm)
+    except DurationNotSet:
+        cap = config.get("fuzzing.max_duration", "8h")
+        print(f"no --duration set. A fuzz campaign never defaults silently; "
+              f"pass e.g. --duration 30m (cap: {cap}).")
+        return 2
+    except ConfirmationRequired:
+        print(f"--duration exceeds fuzzing.confirm_above ({config.get('fuzzing.confirm_above')}); "
+              f"re-run with --confirm to acknowledge the long run.")
+        return 2
+    try:
+        engine = select_engine(args.language)
+    except NoEngineForLanguage as exc:
+        print(str(exc))
+        return 2
+
+    print(f"campaign ready: engine={engine.name}, cap={max_seconds}s, "
+          f"target=sandbox-internal only (§7 scope constraint).")
+    print("harness generation + engine execution require the configured sandbox "
+          "toolchain; run via cosmo.fuzz.run_campaign with a fuzz_runner wired to "
+          "the sandbox (§6). No external target is reachable from this command.")
+    return 0
 
 
 def _cmd_review(args) -> int:
