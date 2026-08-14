@@ -121,6 +121,35 @@ cosmo trends .                # lifecycle, noisiest rules, OWASP rollup
 cosmo trends . --disclosure   # the coordinated-disclosure queue
 ```
 
+**Step 16 — the zero-day fuzzing campaign (§7) — is present** (`cosmo.fuzz`), a
+separate, **manual-only** capability (`cosmo fuzz`) for surfacing genuinely
+unknown vulnerabilities against cosmo's *own sandboxed build*. cosmo orchestrates
+an existing engine per language (Atheris/libFuzzer/AFL++/go-fuzz/Jazzer) — it
+never reimplements one — over an LLM-drafted harness per entry point, a
+content-addressed persistent seed corpus, and stack-hash crash triage with input
+minimization. The design-review constraints are load-bearing and tested:
+
+- **Hard scope constraint** — no code path accepts an external URL as a target;
+  a campaign refuses anything but the sandbox-internal instance, and all engine
+  egress is stamped `SANDBOX` mode through the broker (§9a).
+- **Novelty is never asserted** — a crash the check can't match against a known
+  CVE/issue is *unverified-novel*, never "novel"; a failed lookup does not get
+  read as "no match ⇒ novel." Matches only *flag* likely duplicates for review.
+- **Coverage is never assumed** — the campaign runs against the fraction of entry
+  points whose harness actually built, surfaced as `coverage_fraction`.
+- **Duration never defaults silently** — an unset `--duration` prompts; the cap
+  is a safety-tier config a repo can only lower, and a run above
+  `fuzzing.confirm_above` needs explicit `--confirm`.
+- **No scheduler, no daemon; always tears down** — `run_campaign` is a plain
+  function, and teardown runs even when the engine crashes mid-run.
+
+`fuzzing.enabled` is off by default and a repo cannot widen it past the operator
+ceiling. See `tests/test_fuzz.py`.
+
+```bash
+cosmo fuzz . --duration 30m --operator-config op.yaml   # manual-only, sandbox build
+```
+
 ## What's implemented
 
 | Step | Area | Status |
