@@ -162,6 +162,32 @@ def _cmd_status(session: Session, args) -> str:
             f"campaigns: {camps}")
 
 
+def _cmd_disclose(session: Session, args) -> str:
+    """<finding-id> — draft + queue a coordinated disclosure (§13); sends nothing"""
+    from ..disclose import NotEligible, find_contact, queue_disclosure
+    from ..disclose.security_md import DisclosureContact
+    from ..store import TrendStore
+    if not args:
+        return "usage: /disclose <finding-id>"
+    f = session.find(args[0])
+    if f is None:
+        return f"no finding {args[0]!r} in session state"
+    contact = find_contact(session.target)
+    if contact is None:
+        # fall back to an operator-configured disclosure contact, if any
+        op = session.config.get("disclosure.contact")
+        contact = DisclosureContact(url=op) if op else None
+    store = TrendStore.for_target(session.target)
+    try:
+        draft = queue_disclosure(store, session.target, f, contact)
+    except NotEligible as exc:
+        return f"not disclosable: {exc}"
+    finally:
+        store.close()
+    return (f"queued disclosure for {f.id} → {draft.contact.target} "
+            f"(embargo drafted; nothing sent — needs explicit human approval to deliver)")
+
+
 def _cmd_report(session: Session, args) -> str:
     """[format] — export findings as cli|sarif|pr (pr goes through the gate)"""
     fmt = (args[0] if args else "cli").lower()
@@ -175,8 +201,8 @@ def _cmd_report(session: Session, args) -> str:
     return render_cli(report, color=False)
 
 
-# Order defines /help output. /scope (§9, step 19) and /disclose (§13, step 18)
-# register here once those steps land — the layer is built to receive them.
+# Order defines /help output. /disclose (§13) is wired in as of step 18; /scope
+# (§9, step 19) registers here once that step lands.
 _COMMANDS = {
     "help": _cmd_help,
     "status": _cmd_status,
@@ -187,5 +213,6 @@ _COMMANDS = {
     "confirm": _cmd_confirm,
     "waive": _cmd_waive,
     "baseline": _cmd_baseline,
+    "disclose": _cmd_disclose,
     "report": _cmd_report,
 }

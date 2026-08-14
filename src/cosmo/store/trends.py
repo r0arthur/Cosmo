@@ -148,6 +148,31 @@ class TrendStore:
         out = [(r["category"], r["n"], (r["w"] or 0) / r["n"]) for r in rows if r["n"] >= min_samples]
         return sorted(out, key=lambda x: x[2], reverse=True)
 
+    def upsert(self, target: str, f: Finding, now: float | None = None) -> None:
+        """Insert or refresh a single finding without the absent-as-fixed sweep
+        that `record_scan` performs. Used by the disclosure workflow (§13) to
+        ensure a finding is tracked before a status is attached to it."""
+        now = now if now is not None else time.time()
+        if not f.fingerprint:
+            return
+        exists = self._conn.execute(
+            "SELECT 1 FROM findings WHERE target=? AND fingerprint=?",
+            (target, f.fingerprint)).fetchone()
+        if exists:
+            self._conn.execute(
+                "UPDATE findings SET last_seen=?, severity=?, category=?, "
+                "confirmation_status=?, waived=?, title=? WHERE target=? AND fingerprint=?",
+                (now, str(f.severity), f.category, f.confirmation_status.value,
+                 int(f.waived), f.title, target, f.fingerprint))
+        else:
+            self._conn.execute(
+                "INSERT INTO findings (target, fingerprint, title, severity, category, "
+                "source, status, confirmation_status, waived, first_seen, last_seen) "
+                "VALUES (?,?,?,?,?,?,'open',?,?,?,?)",
+                (target, f.fingerprint, f.title, str(f.severity), f.category, f.source,
+                 f.confirmation_status.value, int(f.waived), now, now))
+        self._conn.commit()
+
     # --- disclosure queue (§13) --------------------------------------------
 
     def set_disclosure_status(self, target: str, fingerprint: str, status: str) -> None:

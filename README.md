@@ -177,6 +177,31 @@ dispatcher when those steps land. See `tests/test_interactive.py`.
 cosmo interactive .            # live session; /help for commands
 ```
 
+**Step 18 — the coordinated disclosure workflow (§13) — is present**
+(`cosmo.disclose`). For **confirmed, high-severity, unpatched** findings from any
+source, cosmo drafts a private advisory to the maintainer contact from the repo's
+`SECURITY.md` and **queues** it. The load-bearing property from the design review
+is that **nothing leaves the machine without explicit human approval**, tested
+directly:
+
+- `queue_disclosure` gates on eligibility (confirmed + `HIGH`+ + not waived),
+  drafts the advisory, and enqueues it as `queued` in the findings store — it
+  **sends nothing**.
+- `send_disclosure` refuses without a `HumanApproval` that matches *this*
+  finding (a bare truthy value or an approval for another finding won't do), and
+  the transport is never touched when approval is missing.
+- Every send routes through the egress broker (§9a) in `DISCLOSURE` mode, so the
+  delivery endpoint must be an **operator-configured** disclosure endpoint —
+  a `SECURITY.md` pointing at an arbitrary host is refused even *with* approval
+  (it's untrusted repo input, RISK-03).
+- CVE is left `pending` — assignment is routed via the maintainer/CNA, never
+  self-announced. Status lifecycle (`queued`→`reported`→`acknowledged`→`patched`
+  →`disclosed`) lives in the store (§14).
+
+Triggered manually with `/disclose <finding-id>` from an interactive session,
+which drafts + queues and reports that nothing was sent. See
+`tests/test_disclose.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
