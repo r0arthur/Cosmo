@@ -64,6 +64,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="acknowledge a duration above fuzzing.confirm_above")
     p_fuzz.add_argument("--operator-config")
 
+    p_int = sub.add_parser("interactive", help="live session — same engine, slash-commands (§7)")
+    p_int.add_argument("target", help="local path or GitHub PR to open a session on")
+    p_int.add_argument("--operator-config")
+    p_int.add_argument("--no-scan", action="store_true", help="don't scan on start")
+
     p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup (§14/§15)")
     p_trends.add_argument("target", help="local path previously scanned with --record")
     p_trends.add_argument("--disclosure", action="store_true",
@@ -112,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.sarif:
             print(f"wrote SARIF to {args.sarif}")
         return code
+    if args.cmd == "interactive":
+        from .interactive import run_repl
+        run_repl(args.target, operator_config=args.operator_config, autoscan=not args.no_scan)
+        return 0
     if args.cmd == "fuzz":
         return _cmd_fuzz(args)
     if args.cmd == "trends":
