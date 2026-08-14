@@ -202,6 +202,32 @@ Triggered manually with `/disclose <finding-id>` from an interactive session,
 which drafts + queues and reports that nothing was sent. See
 `tests/test_disclose.py`.
 
+**Step 19 — authorized external-target mode (§9) — is present** (`cosmo.external`).
+Testing a live target the user is *separately authorized* to test (a bug-bounty
+program, an approved pentest) — distinct from §6/§7, which only ever touch a build
+cosmo provisioned itself, with **no code path between the two**. All enforcement
+already lives in the egress broker (§9a, step 7); this layer adds `/scope`
+declaration parsing and a thin recon driver. The §9 guarantees hold under test:
+
+- **`/scope` is mandatory** — recon is refused (`ScopeRequired`) until a scope is
+  declared, and the declaration must be complete (program, non-empty in-scope
+  list, an explicit rate limit read from the program's terms, never inferred).
+- **Out-of-scope is hard-excluded, not warned** — an excluded or non-included
+  host raises `EgressDenied` and the tool runner never runs; the SSRF net still
+  refuses the metadata IP even under a wildcard scope.
+- **One global rate-limit budget** sits in front of *all* tools — a second tool
+  shares the first's budget, so combined concurrency can't exceed the declared
+  limit.
+- **Every request is logged** (allowed and denied alike) — the record a program
+  owner may ask for.
+- **Operator clamps** — `external_targets.enabled` is a safety-tier switch a repo
+  can't flip on; the operator's `mandatory_excludes` are unioned into every
+  declaration and a `max_rate_limit_per_sec` ceiling clamps the declared rate down.
+
+Findings normalize to the shared `Finding` shape (`source="external"`) and flow
+into the same aggregator/waiver/disclosure paths. `/scope` is wired into the
+interactive session, completing the §7 command set. See `tests/test_external.py`.
+
 ## What's implemented
 
 | Step | Area | Status |
