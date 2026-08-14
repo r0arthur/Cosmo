@@ -150,6 +150,33 @@ ceiling. See `tests/test_fuzz.py`.
 cosmo fuzz . --duration 30m --operator-config op.yaml   # manual-only, sandbox build
 ```
 
+**Step 17 — the interactive command layer (§7) — is present** (`cosmo.interactive`).
+Cosmo as a live session (`cosmo interactive <target>`): the **same engine** as
+batch mode, answering follow-ups from in-session findings state without
+re-scanning. Slash-commands — `/duration`, `/model`, `/threshold`, `/skills`,
+`/confirm`, `/waive`, `/baseline`, `/status`, `/report`, `/help` — each delegate
+to the same guarded code batch mode runs. The load-bearing property from the
+design review is that **the command layer cannot bypass the guardrails**, tested
+directly:
+
+- `/duration` is capped by `fuzzing.max_duration`; `/duration extend` stays
+  clamped, and a run above `fuzzing.confirm_above` needs `--confirm`. Raising the
+  ceiling requires editing config, never a chat command.
+- `/model` resolves through the §8 data-governance gate — a sensitive repo's
+  source is never fanned to a disallowed vendor from a session command; it
+  reports the refusal and stays on the safe default.
+- `/report pr` renders through the fail-closed public-comment gate (RISK-05),
+  withholding a sensitive/confirmed finding and its PoC exactly as the Action does.
+- `/threshold` only moves the session's severity floor — it never writes a
+  safety-tier key.
+
+`/scope` (§9, step 19) and `/disclose` (§13, step 18) register into this same
+dispatcher when those steps land. See `tests/test_interactive.py`.
+
+```bash
+cosmo interactive .            # live session; /help for commands
+```
+
 ## What's implemented
 
 | Step | Area | Status |
