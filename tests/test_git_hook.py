@@ -65,7 +65,7 @@ def test_non_blocking_never_fails(tmp_path, monkeypatch):
 
     # A critical finding, but blocking is off → exit 0 (commit proceeds).
     import cosmo.engine as engine
-    monkeypatch.setattr(engine, "resolve_primary", lambda cfg: (_Provider(Severity.CRITICAL), []))
+    monkeypatch.setattr(engine, "resolve_primary", lambda cfg, cli_model=None: (_Provider(Severity.CRITICAL), []))
     report, code = run_git_hook(Config(data={}), staged_path=d, blocking_override=False)
     assert code == 0
 
@@ -77,7 +77,7 @@ def test_blocking_fails_on_critical(tmp_path, monkeypatch):
 
     # Inject the provider through the engine resolution path.
     import cosmo.engine as engine
-    monkeypatch.setattr(engine, "resolve_primary", lambda cfg: (_Provider(Severity.CRITICAL), []))
+    monkeypatch.setattr(engine, "resolve_primary", lambda cfg, cli_model=None: (_Provider(Severity.CRITICAL), []))
     report, code = run_git_hook(Config(data={}), staged_path=d, blocking_override=True)
     assert code == 1
     assert any(f.severity is Severity.CRITICAL for f in report.findings)
@@ -89,7 +89,7 @@ def test_hook_threshold_defaults_to_critical(tmp_path, monkeypatch):
     _git(d, "add", "app.py")
     # A HIGH finding is below the hook's critical floor → filtered out → exit 0.
     import cosmo.engine as engine
-    monkeypatch.setattr(engine, "resolve_primary", lambda cfg: (_Provider(Severity.HIGH), []))
+    monkeypatch.setattr(engine, "resolve_primary", lambda cfg, cli_model=None: (_Provider(Severity.HIGH), []))
     report, code = run_git_hook(Config(data={}), staged_path=d, blocking_override=True)
     assert code == 0
     assert all(f.severity is not Severity.HIGH or f.waived for f in report.findings)
