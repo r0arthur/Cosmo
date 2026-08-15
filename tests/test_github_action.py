@@ -29,7 +29,7 @@ class _Provider:
 
 def _inject(monkeypatch, findings):
     import cosmo.engine as engine
-    monkeypatch.setattr(engine, "resolve_primary", lambda cfg: (_Provider(findings), []))
+    monkeypatch.setattr(engine, "resolve_primary", lambda cfg, cli_model=None: (_Provider(findings), []))
 
 
 # --- PR ref parsing ---------------------------------------------------------

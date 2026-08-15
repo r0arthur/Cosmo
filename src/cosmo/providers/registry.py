@@ -17,10 +17,12 @@ from __future__ import annotations
 from ..config import Config
 from .base import ModelProvider
 from .claude import ClaudeProvider
+from .claude_cli import ClaudeCLIProvider
 from .openai_compat import codex_provider, deepseek_provider, llama_provider
 
 _FACTORIES = {
     "claude": lambda: ClaudeProvider(),
+    "claude-cli": lambda: ClaudeCLIProvider(),
     "codex": lambda: codex_provider(),
     "deepseek": lambda: deepseek_provider(),
     "llama": lambda: llama_provider(),
