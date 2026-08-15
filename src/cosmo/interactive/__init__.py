@@ -11,7 +11,25 @@ fail-closed public-comment gate all still apply. `/scope` (§9, step 19) and
 land.
 """
 from .commands import dispatch
+from .driver import (
+    AgentDriver,
+    CommandCall,
+    Plan,
+    PlanRequest,
+    Planner,
+    ToolSpec,
+    TurnResult,
+    llm_planner,
+    parse_plan,
+    rule_based_planner,
+    run_agent,
+)
 from .repl import run_repl
 from .session import Session
 
-__all__ = ["Session", "dispatch", "run_repl"]
+__all__ = [
+    "Session", "dispatch", "run_repl",
+    # Harness-agnostic driver (§17 option 2) — orchestration on any model, or none.
+    "AgentDriver", "run_agent", "Planner", "Plan", "PlanRequest", "CommandCall",
+    "ToolSpec", "TurnResult", "rule_based_planner", "llm_planner", "parse_plan",
+]

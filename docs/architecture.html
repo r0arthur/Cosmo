@@ -154,7 +154,7 @@
 
   <div class="stats">
     <div class="stat"><div class="n">20</div><div class="l">build steps, all present</div></div>
-    <div class="stat ok"><div class="n">188</div><div class="l">hermetic tests passing</div></div>
+    <div class="stat ok"><div class="n">203</div><div class="l">hermetic tests passing</div></div>
     <div class="stat"><div class="n">7</div><div class="l">safety invariants (RISK-01…07)</div></div>
     <div class="stat"><div class="n">1</div><div class="l">egress chokepoint</div></div>
     <div class="stat"><div class="n">0</div><div class="l">forks of Claude Code</div></div>
@@ -567,8 +567,12 @@
   <p class="sec-intro">cosmo does not fork Claude Code. It reuses its auth, session, and tool-use
   by shelling to the same <code>cosmo</code> binary from every surface — the CLI, the git hook, the
   Action, an interactive REPL, and the plugin. Enforcement therefore lives in exactly one place,
-  and no surface can reach around it.</p>
+  and no surface can reach around it. Two roles for an LLM are kept separate: the model that
+  <b>reviews</b> the code (the config-driven provider layer — Claude, Codex, DeepSeek, local Llama,
+  ensemble) and the harness that <b>drives</b> the loop.</p>
   <ul class="clean">
+    <li><b>Your review model is your choice.</b> The plugin is just a host surface; the model that finds bugs is set in <code>providers:</code> and is never forced to Claude — only the data-sensitivity gate can veto an off-box vendor.</li>
+    <li><b>Orchestration is model-agnostic too.</b> §17 option 2 ships as <code>cosmo agent</code>: cosmo's own agent loop, where any planner — a local Llama, DeepSeek, or no model at all — proposes commands and the driver executes only through the guarded <code>dispatch</code>. The orchestrating model is contained to the exact surface a human at the REPL has.</li>
     <li><b>One binary, many triggers.</b> The plugin's <code>/cosmo-*</code> commands and the git hook both call <code>run_review</code>; there is no second, less-guarded path.</li>
     <li><b>The plugin surface is generated, not hand-kept.</b> <code>cosmo plugin sync</code> derives the commands from the guarded registry; <code>cosmo plugin check</code> fails CI on drift, so the plugin can never expose more than the enforced layer.</li>
     <li><b>Graceful degradation.</b> Importing cosmo never requires Claude Code or an API key — without them, the LLM stage is reported as <code>skipped:</code>, not silently passed.</li>
@@ -578,7 +582,7 @@
 <footer>
   <div class="verify">
     <span class="badge">VERIFIED</span>
-    <span>188 / 188 tests passing · 0 plugin drift · clean tree</span>
+    <span>203 / 203 tests passing · 0 plugin drift · clean tree</span>
   </div>
   <p class="muted" style="max-width:var(--measure)">Everything on this page reflects the current
   state of the codebase: the pipeline order is <code>engine.py</code>, the broker checks and modes
