@@ -1,8 +1,21 @@
 {
   "name": "cosmo",
   "version": "0.1.0",
-  "description": "Claude-Code-based security review tool (MVP: static pre-filter + LLM review over a diff, with a two-tier config trust model and a fail-closed public-comment gate). Build steps 1-6 of the cosmo architecture.",
+  "description": "Claude-Code-based security review and zero-day discovery tool. Static pre-filter + multi-model LLM review over a diff, dynamic sandbox confirmation, manual fuzzing, trend/compliance tracking, coordinated disclosure, and authorized external-target recon \u2014 all behind a two-tier config trust model, a single egress broker, and a fail-closed public-comment gate. Reuses Claude Code auth/session/tool-use; does not fork it.",
   "author": {
     "name": "cosmo"
-  }
+  },
+  "commands": [
+    "./commands/cosmo-review.md",
+    "./commands/cosmo-threshold.md",
+    "./commands/cosmo-model.md",
+    "./commands/cosmo-duration.md",
+    "./commands/cosmo-skills.md",
+    "./commands/cosmo-confirm.md",
+    "./commands/cosmo-waive.md",
+    "./commands/cosmo-baseline.md",
+    "./commands/cosmo-scope.md",
+    "./commands/cosmo-disclose.md",
+    "./commands/cosmo-report.md"
+  ]
 }

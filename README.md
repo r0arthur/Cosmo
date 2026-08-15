@@ -228,6 +228,33 @@ Findings normalize to the shared `Finding` shape (`source="external"`) and flow
 into the same aggregator/waiver/disclosure paths. `/scope` is wired into the
 interactive session, completing the §7 command set. See `tests/test_external.py`.
 
+**Step 20 — Claude Code plugin/skill integration (§17) — is present**
+(`cosmo.plugin`), the final build step. Cosmo ships as a Claude Code plugin: a
+`/cosmo-review` umbrella command plus a `/cosmo-*` family (scope, disclose,
+confirm, waive, report, …). It **reuses Claude Code's auth/session/tool-use** by
+shelling to the same `cosmo` binary the CLI, git hook, and GitHub Action use — it
+does **not** fork Claude Code, and importing the package never requires Claude
+Code to be installed (reuse, not fork; §17). The load-bearing property is that the
+plugin surface *cannot widen past the enforced layer*:
+
+- **The surface is generated from the one guarded registry.** `command_specs()`
+  derives every slash command from `interactive.commands._COMMANDS`; a command
+  that is not in the enforced dispatcher cannot be exposed, and `cosmo plugin
+  check` fails CI if the on-disk `commands/*.md` drift from it.
+- **Every command is tool-narrowed.** Each generated command file restricts
+  `allowed-tools` to `Bash(cosmo:*)` — never a bare shell, a raw network tool, or
+  a `gh … comment` posting tool. Public posting stays behind the §11 gate *inside*
+  cosmo; the plugin can never grant itself that capability.
+- **The in-process bridge routes through the same `dispatch`.** `PluginBridge`
+  holds the same `Session` the REPL uses and forwards each line to the guarded
+  dispatcher — an unknown/refused command is refused identically. `open_session`
+  loads config through `load_config`, so a plugin invocation gets the operator
+  config as the §15 ceiling and cannot inject a safety-tier value.
+
+`cosmo plugin sync` regenerates `.claude-plugin/plugin.json` and the command
+files from code; `cosmo plugin check` reports drift without writing. See
+`tests/test_plugin.py`. **This completes the 20-step build order.**
+
 ## What's implemented
 
 | Step | Area | Status |
@@ -238,11 +265,28 @@ interactive session, completing the §7 command set. See `tests/test_external.py
 | 4 | Output adapters (CLI / SARIF / PR) + **fail-closed gate** (RISK-05) | real, tested |
 | 5 | Waiver/baseline — **content-based fingerprint** (RISK-07) | real, tested |
 | 6 | Static pre-filter — semgrep, gitleaks (dep-audit stubbed) | real (tools optional) |
+| 7 | Egress broker (§9a) — single chokepoint, mode gate + scope + rate + log (RISK-02) | real, tested |
+| 8 | Dynamic sandbox — provision/health/confirm/evidence/teardown (§6) | real, tested |
+| 9 | Multi-model provider layer — alternates, resolution order, ensemble, §8 gate | real, tested |
+| 10 | Skills system + enhancement feedback loop (RISK-03) | real, tested |
+| 11 | Context ingestion — issues/comments feeding prioritization (RISK-03) | real, tested |
+| 12 | Incremental scanning — per-file / composite-key caching (§15) | real, tested |
+| 13 | Git-hook adapter (pre-commit / pre-push) | real, tested |
+| 14 | GitHub Action adapter — gated PR comment (RISK-05) | real, tested |
+| 15 | Trend store + CWE→OWASP compliance mapping (§14) | real, tested |
+| 16 | Zero-day fuzzing — harness gen, engines, triage, novelty-never-asserted (§7) | real, tested |
+| 17 | Interactive command layer — `/…` over a live session, no guardrail bypass (§7) | real, tested |
+| 18 | Coordinated disclosure — drafts-and-**queues**, human approval required (RISK-06) | real, tested |
+| 19 | Authorized external-target mode — `/scope`, exclusions, logging (§9) | real, tested |
+| 20 | Claude Code plugin/skill integration — generated surface, no bypass (§17) | real, tested |
 
-The three load-bearing safety properties from the design review are implemented
-and unit-tested: a scanned repo cannot loosen safety-tier config, the public
-gate withholds by default on unknown sensitivity, and the waiver fingerprint
-survives line shifts without suppressing genuinely new instances.
+The load-bearing safety properties from the design review are implemented and
+unit-tested end to end: a scanned repo cannot loosen safety-tier config, the
+public gate withholds by default on unknown sensitivity, the waiver fingerprint
+survives line shifts without suppressing genuinely new instances, every network
+touch funnels through one guarded broker, fuzzing never asserts novelty, nothing
+is disclosed without explicit human approval, and the plugin surface cannot widen
+past the enforced command layer. **174 tests pass.**
 
 ## Install & run
 
