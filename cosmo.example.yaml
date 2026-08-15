@@ -30,5 +30,10 @@ sandbox:                             # [safety] — tighten only
   network: none                      #   may stay 'none'; cannot open to bridge/host
   timeout_seconds: 120               #   may lower below the operator ceiling; cannot raise
 
-fuzzing:                             # [safety] — tighten only (fuzzing is not in the MVP)
+fuzzing:                             # [safety] — tighten only
   max_duration: "2h"                 #   may lower; cannot raise past the operator ceiling
+
+# extensions:                        # [safety] — OPERATOR-ONLY. A block here in a
+#   paths: ["..."]                   #   scanned repo is IGNORED + warned: a repo can
+#   enabled: ["my-ext"]              #   never enable an extension. Set these in the
+#   reference_only: ["my-ext"]       #   operator config instead. See docs/EXTENSIONS.md.

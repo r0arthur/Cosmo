@@ -328,8 +328,44 @@ Ships with `.claude-plugin/plugin.json` and a `/cosmo-review` command
 (`commands/cosmo-review.md`). §17: cosmo depends on Claude Code, it does not fork
 it.
 
+## Custom extensions (plugins & skills)
+
+cosmo is extensible without forking. A **custom extension** is a small Python
+module that contributes a **detector** (extra finding source), a **skill** (extra
+review guidance), and/or a **command** (`/x-<name>` in a live session). Point the
+**operator** config at it and enable it by name:
+
+```yaml
+# operator-config.yaml (the trusted tier — never the scanned repo's cosmo.yaml)
+extensions:
+  paths: ["/abs/path/to/my-ext"]     # or install a `cosmo.extensions` entry point
+  enabled: ["my-ext"]                # discovery ≠ activation: this arms it
+```
+
+```bash
+cosmo extensions --operator-config operator-config.yaml   # list active / discovered
+```
+
+The safety model is enforced by construction: **discovery ≠ activation** (a
+disabled extension is never imported), **only the operator can enable one** (the
+`extensions` config section is safety-tier, so a scanned repo can't add or arm an
+extension), custom commands are **namespaced to `/x-*`** so they can't impersonate
+a guarded builtin, custom findings still flow through the **§11 public-comment
+gate**, and custom-skill trust **follows the operator's activation** (RISK-03).
+See [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md) and the worked example in
+[`examples/extensions/hardcoded-ip/`](examples/extensions/hardcoded-ip/cosmo_extension.py).
+
+## Contributing
+
+Researchers are welcome — new detectors, skill packs, bug fixes, and sharpenings
+of the safety model. Extend from the outside with an
+[extension](docs/EXTENSIONS.md) (no core changes needed), or contribute to the
+core following [`CONTRIBUTING.md`](CONTRIBUTING.md). Anything touching a safety
+property (RISK-01…07) needs a test proving the property still holds. Report a
+guardrail bypass in cosmo itself privately — see CONTRIBUTING.
+
 ## Tests
 
 ```bash
-pip install -e '.[dev]' && pytest
+pip install -e '.[dev]' && pytest    # 188 hermetic tests
 ```

@@ -74,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
     p_trends.add_argument("--disclosure", action="store_true",
                           help="show the coordinated-disclosure queue (§13) instead")
 
+    p_ext = sub.add_parser("extensions", help="list discovered custom extensions (plugins/skills)")
+    p_ext.add_argument("--path", default=".", help="repo path for repo cosmo.yaml (default: cwd)")
+    p_ext.add_argument("--operator-config", help="operator config that may enable extensions")
+
     p_plugin = sub.add_parser("plugin", help="manage the Claude Code plugin surface (§17)")
     p_plugin.add_argument("action", choices=["sync", "check"],
                           help="sync: regenerate manifest+commands from code; "
@@ -131,6 +135,28 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fuzz(args)
     if args.cmd == "trends":
         return _cmd_trends(args)
+    if args.cmd == "extensions":
+        from .extensions import load_enabled
+        cfg = load_config(args.path, operator_config=args.operator_config)
+        loaded = load_enabled(cfg)
+        if loaded.active:
+            print("active (operator-enabled):")
+            for ext in loaded.active:
+                print(f"  {ext.name} v{ext.version} — {ext.description or '(no description)'}")
+                print(f"    {len(ext.skills)} skill(s), {len(ext.detectors)} detector(s), "
+                      f"{len(ext.commands)} command(s)")
+        if loaded.disabled:
+            print("discovered but NOT enabled (add the name to operator extensions.enabled):")
+            for n in loaded.disabled:
+                print(f"  {n}")
+        if loaded.errors:
+            print("failed to load:")
+            for n, e in loaded.errors.items():
+                print(f"  {n}: {e}")
+        if not (loaded.active or loaded.disabled or loaded.errors):
+            print("no extensions discovered (set extensions.paths / install a "
+                  "cosmo.extensions entry point)")
+        return 0
     if args.cmd == "plugin":
         from .plugin import check_plugin, sync_plugin
         if args.action == "sync":
