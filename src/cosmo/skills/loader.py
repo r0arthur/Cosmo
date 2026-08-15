@@ -30,11 +30,16 @@ class Skill:
     description: str
     applies_to: list[str]
     instructions: str
-    origin: str            # ORG (trusted) | REPO (untrusted)
+    origin: str            # ORG (trusted) | REPO (untrusted) | "ext:<name>"
     path: str = ""
+    # Extensions carry an explicit trust decision (from operator activation).
+    # For plain org/repo skills this stays None and trust follows the origin.
+    trusted_override: bool | None = None
 
     @property
     def trusted(self) -> bool:
+        if self.trusted_override is not None:
+            return self.trusted_override
         return self.origin == ORG
 
     def matches(self, file_path: str) -> bool:

@@ -29,6 +29,9 @@ PREFERENCE_SECTIONS = {
 }
 SAFETY_SECTIONS = {
     "sandbox", "fuzzing", "external_targets", "disclosure", "triggers", "providers_policy",
+    # Third-party extensions run in-process, so *enabling* one is a full-trust act
+    # the operator must make — a scanned repo can never enable or add an extension.
+    "extensions",
 }
 
 # Data-sensitivity ranked (higher = more restrictive). A repo may only raise it.
@@ -182,6 +185,10 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
                          "rate_limit_source": "scope_declared"},
     "disclosure": {"contact": "security.md", "embargo_days": 90},
     "providers_policy": {"data_sensitivity": "normal", "sensitive_allowed_vendors": []},
+    # Custom skills/detectors/commands. `paths`/entry-points are *discovered*, but
+    # only names in `enabled` are *activated* (imported + run). `reference_only`
+    # loads an enabled extension's skills as UNTRUSTED reference (RISK-03).
+    "extensions": {"enabled": [], "paths": [], "reference_only": []},
 }
 
 

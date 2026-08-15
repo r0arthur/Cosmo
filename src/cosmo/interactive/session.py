@@ -29,9 +29,25 @@ class Session:
     running_campaigns: dict[str, int] = field(default_factory=dict)  # name -> remaining s
     notes: list[str] = field(default_factory=list)
     external=None                              # /scope — lazily created ExternalTargetMode
+    extensions=None                            # LoadedExtensions — lazily activated
     # Injected so the REPL stays hermetic in tests; defaults to the real engine.
     scanner=None
     confirmer=None
+
+    def loaded_extensions(self):
+        """Operator-enabled extensions for this session, activated on first use.
+
+        Discovery ≠ activation: only names in the safety-tier `extensions.enabled`
+        are imported and run; a scanned repo cannot enable one."""
+        if self.extensions is None:
+            from ..extensions import load_enabled
+            self.extensions = load_enabled(self.config)
+        return self.extensions
+
+    def extension_command(self, name: str):
+        """Resolve a `/x-<name>` extension command, or None. Never consulted for a
+        builtin name — dispatch checks builtins first, so no impersonation."""
+        return self.loaded_extensions().command_table().get(name)
 
     def external_mode(self):
         """The §9 external-target driver for this session, created on first use."""

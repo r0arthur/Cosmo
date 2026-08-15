@@ -34,9 +34,14 @@ def dispatch(session: Session, line: str) -> str:
     parts = line[1:].split()
     name, args = parts[0], parts[1:]
     handler = _COMMANDS.get(name)
-    if handler is None:
-        return f"unknown command /{name}; try /help"
-    return handler(session, args)
+    if handler is not None:
+        # Builtins are authoritative and always win — an extension can never take
+        # the name of a guarded command (see extensions loader: they are `x-*`).
+        return handler(session, args)
+    ext_handler = session.extension_command(name)
+    if ext_handler is not None:
+        return ext_handler(session, args)
+    return f"unknown command /{name}; try /help"
 
 
 def _cmd_help(session: Session, args) -> str:
@@ -151,6 +156,25 @@ def _cmd_baseline(session: Session, args) -> str:
     return "\n".join(f"{fp}  {meta.get('reason', '')}".rstrip() for fp, meta in b.waived.items())
 
 
+def _cmd_extensions(session: Session, args) -> str:
+    """— list activated custom extensions + their /x-* commands (operator-gated)"""
+    le = session.loaded_extensions()
+    lines = []
+    if le.active:
+        lines.append("active:")
+        for ext in le.active:
+            cmds = ", ".join(f"/x-{c}" for c in ext.commands) or "(no commands)"
+            lines.append(f"  {ext.name} v{ext.version} — "
+                         f"{len(ext.skills)} skill(s), {len(ext.detectors)} detector(s); {cmds}")
+    if le.disabled:
+        lines.append("discovered but not enabled (add to operator extensions.enabled):")
+        lines.extend(f"  {n}" for n in le.disabled)
+    if le.errors:
+        lines.append("failed to load:")
+        lines.extend(f"  {n}: {e}" for n, e in le.errors.items())
+    return "\n".join(lines) or "no extensions discovered"
+
+
 def _cmd_status(session: Session, args) -> str:
     """— session snapshot: findings, running campaigns, threshold, model"""
     counts = Report(session.target, session.findings).counts
@@ -237,6 +261,7 @@ def _cmd_report(session: Session, args) -> str:
 _COMMANDS = {
     "help": _cmd_help,
     "status": _cmd_status,
+    "extensions": _cmd_extensions,
     "threshold": _cmd_threshold,
     "model": _cmd_model,
     "duration": _cmd_duration,

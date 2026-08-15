@@ -64,6 +64,12 @@ def run_review(
         skipped.append(f"model:{provider.name} (unavailable — no SDK or ANTHROPIC_API_KEY)")
 
     cache.save()
+
+    # Custom extension detectors (operator-gated). Their output is normalized into
+    # the shared Finding shape and joins the same downstream path — dedupe, waiver,
+    # and the §11 public-comment gate — with no privileged shortcut.
+    findings += _run_extension_detectors(diff.target, config, skipped, notes)
+
     findings = _dedupe(findings)
 
     # Step 5 — waiver/baseline suppression (fingerprints stamped here).
@@ -79,6 +85,29 @@ def run_review(
     findings = [f for f in findings if f.waived or meets_threshold(f.severity, floor)]
 
     return Report(target=diff.target, findings=findings, skipped_stages=skipped, notes=notes)
+
+
+def _run_extension_detectors(target: str, config: Config, skipped: list[str],
+                             notes: list[str]) -> list[Finding]:
+    """Run operator-enabled extension detectors; normalize their output.
+
+    A broken or misbehaving detector is isolated: it is recorded as skipped, never
+    crashing the review, and any non-Finding it returns is rejected by
+    `normalize_extension_findings` rather than silently trusted."""
+    from .extensions import load_enabled, normalize_extension_findings
+    loaded = load_enabled(config)
+    for name, err in loaded.errors.items():
+        skipped.append(f"ext:{name} (load error: {err})")
+    out: list[Finding] = []
+    for det_id, detector in loaded.detectors().items():
+        ext_name = det_id.split(":", 1)[0]
+        try:
+            out += normalize_extension_findings(ext_name, detector(target, config))
+        except Exception as exc:
+            skipped.append(f"ext-detector:{det_id} (error: {exc})")
+    if out:
+        notes.append(f"extensions: {len(out)} finding(s) from custom detectors")
+    return out
 
 
 def _run_static_recorded(target: str, skipped: list[str]) -> list[Finding]:
@@ -102,6 +131,10 @@ def _review_context(diff, static_findings: list[Finding], config: Config, notes:
         parts.append("## Static pre-filter already flagged (do not re-derive):\n" + sc)
 
     skills = load_skills(diff.target, org_dir=config.get("skills.org_dir"))
+    # Custom skills contributed by operator-enabled extensions (trust follows
+    # activation; reference_only extensions load as untrusted — see extensions §).
+    from .extensions import load_enabled
+    skills += load_enabled(config).skills()
     matched = match_skills(skills, [f.path for f in diff.files])
     if matched:
         notes.append(f"skills matched: {len(matched)} "
