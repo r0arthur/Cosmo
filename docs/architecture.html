@@ -1,0 +1,589 @@
+<title>How cosmo Works</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#f5f7f8; --surface:#ffffff; --surface-2:#eef1f4; --surface-3:#e5e9ee;
+    --ink:#111721; --ink-2:#48545f; --ink-3:#7a8792;
+    --border:#d9dee5; --border-2:#c6cdd6;
+    --accent:#0d8b8b; --accent-2:#0a6f70;
+    --guard:#b06a06;
+    --good:#2b8f5c; --warn:#a9790f; --critical:#c8465a;
+    --accent-soft:#e2f1f1; --guard-soft:#f6ebd6; --critical-soft:#f8e0e4; --good-soft:#e0f0e8;
+    --mono:ui-monospace,"SFMono-Regular","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --measure:70ch;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1116; --surface:#151b22; --surface-2:#1b232c; --surface-3:#222c36;
+      --ink:#e8edf1; --ink-2:#a6b2bd; --ink-3:#6b7783;
+      --border:#28323d; --border-2:#33404c;
+      --accent:#31b3b0; --accent-2:#4cc4c1;
+      --guard:#e0a244;
+      --good:#48b87c; --warn:#d7a446; --critical:#e2697b;
+      --accent-soft:#123230; --guard-soft:#33280f; --critical-soft:#341c22; --good-soft:#153020;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1116; --surface:#151b22; --surface-2:#1b232c; --surface-3:#222c36;
+    --ink:#e8edf1; --ink-2:#a6b2bd; --ink-3:#6b7783;
+    --border:#28323d; --border-2:#33404c;
+    --accent:#31b3b0; --accent-2:#4cc4c1;
+    --guard:#e0a244;
+    --good:#48b87c; --warn:#d7a446; --critical:#e2697b;
+    --accent-soft:#123230; --guard-soft:#33280f; --critical-soft:#341c22; --good-soft:#153020;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); font-size:17px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:940px; margin:0 auto; padding:0 24px}
+  a{color:var(--accent-2); text-decoration:none; border-bottom:1px solid transparent}
+  a:hover{border-bottom-color:currentColor}
+  code{font-family:var(--mono); font-size:.86em; background:var(--surface-2);
+    padding:.1em .38em; border-radius:4px; border:1px solid var(--border)}
+
+  /* ---- header ---- */
+  header{padding:72px 0 32px}
+  .kicker{font-family:var(--mono); font-size:12px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--accent-2); margin:0 0 18px}
+  h1{font-family:var(--mono); font-weight:600; font-size:clamp(40px,8vw,68px); line-height:.98;
+    letter-spacing:-.02em; margin:0; text-wrap:balance}
+  h1 .dot{color:var(--accent)}
+  .lede{max-width:var(--measure); margin:22px 0 0; font-size:19px; color:var(--ink-2)}
+  .lede strong{color:var(--ink); font-weight:600}
+
+  /* ---- stat strip ---- */
+  .stats{display:flex; flex-wrap:wrap; gap:1px; margin:40px 0 8px;
+    background:var(--border); border:1px solid var(--border); border-radius:12px; overflow:hidden}
+  .stat{flex:1 1 150px; background:var(--surface); padding:18px 20px}
+  .stat .n{font-family:var(--mono); font-size:30px; font-weight:600; letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums; line-height:1}
+  .stat .l{font-size:12.5px; color:var(--ink-3); margin-top:7px; letter-spacing:.02em}
+  .stat.ok .n{color:var(--good)}
+
+  /* ---- sections ---- */
+  section{padding:52px 0; border-top:1px solid var(--border)}
+  .sec-head{display:flex; align-items:baseline; gap:16px; margin:0 0 8px}
+  .sec-num{font-family:var(--mono); font-size:13px; color:var(--accent-2); font-weight:600;
+    letter-spacing:.1em; flex:none; padding-top:2px}
+  h2{font-family:var(--mono); font-weight:600; font-size:26px; letter-spacing:-.01em; margin:0; text-wrap:balance}
+  .sec-intro{max-width:var(--measure); color:var(--ink-2); margin:14px 0 0}
+  .sec-intro + .sec-intro{margin-top:12px}
+  p{max-width:var(--measure)}
+
+  figure{margin:34px 0 0; background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:26px 22px 8px; overflow-x:auto}
+  figure svg{display:block; width:100%; height:auto; min-width:520px}
+  figcaption{font-size:13.5px; color:var(--ink-3); margin:16px 4px 12px; max-width:var(--measure);
+    font-family:var(--sans)}
+  figcaption b{color:var(--ink-2); font-weight:600}
+
+  /* diagram primitives */
+  .dwg{color:var(--ink-2)}
+  .dwg text{font-family:var(--mono); fill:var(--ink)}
+  .dwg .t-lbl{fill:var(--ink-2)}
+  .dwg .t-sm{fill:var(--ink-3)}
+  .dwg .node{fill:var(--surface-2); stroke:var(--border-2); stroke-width:1.5}
+  .dwg .node-a{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.5}
+  .dwg .node-g{fill:var(--guard-soft); stroke:var(--guard); stroke-width:2}
+  .dwg .node-c{fill:var(--critical-soft); stroke:var(--critical); stroke-width:1.5}
+  .dwg .edge{stroke:var(--ink-3); stroke-width:1.6; fill:none}
+  .dwg .edge-a{stroke:var(--accent); stroke-width:1.8; fill:none}
+  .dwg .edge-bad{stroke:var(--critical); stroke-width:1.8; fill:none; stroke-dasharray:5 4}
+  .dwg .g-fill{fill:var(--guard)}
+  .dwg .a-fill{fill:var(--accent)}
+  .dwg .c-fill{fill:var(--critical)}
+  .dwg .n-fill{fill:var(--ink-3)}
+
+  /* ---- invariants table ---- */
+  .tbl-scroll{overflow-x:auto; margin-top:26px; border:1px solid var(--border); border-radius:12px}
+  table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:640px}
+  th,td{text-align:left; padding:13px 16px; border-bottom:1px solid var(--border); vertical-align:top}
+  thead th{font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); background:var(--surface-2); font-weight:600}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr{background:var(--surface)}
+  .risk{font-family:var(--mono); font-weight:600; color:var(--accent-2); white-space:nowrap}
+  td .where{font-family:var(--mono); font-size:12.5px; color:var(--ink-3)}
+
+  /* ---- build map ---- */
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px; margin-top:28px}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:18px 18px 16px}
+  .card .ph{font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--accent-2); font-weight:600}
+  .card .steps{font-family:var(--mono); font-size:12px; color:var(--ink-3); margin-top:2px}
+  .card h3{font-size:16px; margin:9px 0 6px; font-weight:650; color:var(--ink)}
+  .card p{font-size:13.7px; color:var(--ink-2); margin:0; max-width:none}
+  .card .mods{margin-top:12px; display:flex; flex-wrap:wrap; gap:6px}
+  .chip{font-family:var(--mono); font-size:11px; color:var(--ink-2); background:var(--surface-2);
+    border:1px solid var(--border); border-radius:20px; padding:2px 9px; white-space:nowrap}
+  .chip.tests{color:var(--good); border-color:color-mix(in srgb,var(--good) 40%, var(--border))}
+
+  ul.clean{max-width:var(--measure); padding-left:0; list-style:none; margin:20px 0 0}
+  ul.clean li{position:relative; padding-left:26px; margin:11px 0; color:var(--ink-2)}
+  ul.clean li::before{content:"→"; position:absolute; left:0; color:var(--accent);
+    font-family:var(--mono); font-weight:600}
+  ul.clean li b{color:var(--ink); font-weight:600}
+
+  footer{border-top:1px solid var(--border); padding:44px 0 80px; color:var(--ink-3); font-size:14px}
+  .verify{display:flex; align-items:center; gap:12px; font-family:var(--mono); font-size:14px;
+    color:var(--good); margin-bottom:18px}
+  .verify .badge{border:1px solid color-mix(in srgb,var(--good) 45%, var(--border));
+    background:var(--good-soft); color:var(--good); padding:3px 11px; border-radius:20px; font-size:12.5px}
+  footer code{font-size:.82em}
+  .muted{color:var(--ink-3)}
+  @media (prefers-reduced-motion:no-preference){a,.chip{transition:border-color .15s}}
+  @media (max-width:560px){ header{padding:48px 0 24px} section{padding:40px 0} }
+</style>
+
+<div class="wrap">
+<header>
+  <p class="kicker">Architecture &amp; Mechanism · security review pipeline</p>
+  <h1>cosmo<span class="dot">.</span></h1>
+  <p class="lede">A Claude-Code-based security review and zero-day discovery tool. The whole
+  system is one function — <strong>run_review(target, config) → Report</strong> — wrapped in a
+  handful of safety invariants that hold <strong>by construction</strong>. Every trigger calls
+  that function; every network touch crosses <strong>one</strong> guarded broker; every public
+  emission passes <strong>one</strong> fail-closed gate. It reuses Claude Code's auth/session/
+  tool-use — it does not fork it.</p>
+
+  <div class="stats">
+    <div class="stat"><div class="n">20</div><div class="l">build steps, all present</div></div>
+    <div class="stat ok"><div class="n">188</div><div class="l">hermetic tests passing</div></div>
+    <div class="stat"><div class="n">7</div><div class="l">safety invariants (RISK-01…07)</div></div>
+    <div class="stat"><div class="n">1</div><div class="l">egress chokepoint</div></div>
+    <div class="stat"><div class="n">0</div><div class="l">forks of Claude Code</div></div>
+  </div>
+</header>
+
+<!-- ============================ 01 PIPELINE ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>The review pipeline</h2></div>
+  <p class="sec-intro">One entry point serves every trigger — the CLI, the git hook, the GitHub
+  Action, an interactive session, and the Claude Code plugin all call <code>run_review</code>.
+  Findings flow through fixed stages in a fixed order: cheap static analysis first (its output
+  handed to the model so it doesn't re-derive it), then the LLM stage, then any custom detectors,
+  then the noise-control and prioritization stages, and finally a severity floor.</p>
+
+  <figure>
+    <svg class="dwg" viewBox="0 0 720 520" role="img"
+      aria-label="Vertical flow: target resolves to a diff, then static pre-filter, LLM review, and extension detectors all feed the finding set, which passes through dedupe, waiver suppression, context prioritization, and the severity floor to produce a Report, which fans out to CLI, SARIF, and a gated PR comment.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="n-fill"/>
+        </marker>
+        <marker id="ara" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="a-fill"/>
+        </marker>
+      </defs>
+
+      <!-- trunk positions -->
+      <!-- target -->
+      <rect x="270" y="12" width="180" height="38" rx="8" class="node-a"/>
+      <text x="360" y="36" text-anchor="middle" font-size="13">target · diff</text>
+      <line x1="360" y1="50" x2="360" y2="72" class="edge" marker-end="url(#ar)"/>
+
+      <!-- three sources row -->
+      <rect x="40" y="74" width="180" height="44" rx="8" class="node"/>
+      <text x="130" y="94" text-anchor="middle" font-size="12.5">static pre-filter</text>
+      <text x="130" y="109" text-anchor="middle" font-size="11" class="t-sm">semgrep · gitleaks</text>
+
+      <rect x="270" y="74" width="180" height="44" rx="8" class="node"/>
+      <text x="360" y="94" text-anchor="middle" font-size="12.5">LLM review</text>
+      <text x="360" y="109" text-anchor="middle" font-size="11" class="t-sm">provider layer §8</text>
+
+      <rect x="500" y="74" width="180" height="44" rx="8" class="node"/>
+      <text x="590" y="94" text-anchor="middle" font-size="12.5">ext. detectors</text>
+      <text x="590" y="109" text-anchor="middle" font-size="11" class="t-sm">operator-gated</text>
+
+      <!-- static feeds LLM as context -->
+      <path d="M220,90 L262,90" class="edge-a" marker-end="url(#ara)"/>
+      <text x="241" y="83" text-anchor="middle" font-size="9.5" class="a-fill">ctx</text>
+
+      <!-- converge to finding set -->
+      <line x1="130" y1="118" x2="130" y2="150" class="edge"/>
+      <line x1="360" y1="118" x2="360" y2="150" class="edge"/>
+      <line x1="590" y1="118" x2="590" y2="150" class="edge"/>
+      <path d="M130,150 L590,150" class="edge"/>
+      <line x1="360" y1="150" x2="360" y2="172" class="edge" marker-end="url(#ar)"/>
+
+      <!-- pipeline nodes -->
+      <g>
+        <rect x="270" y="174" width="180" height="38" rx="8" class="node"/>
+        <text x="360" y="198" text-anchor="middle" font-size="13">dedupe</text>
+        <line x1="360" y1="212" x2="360" y2="230" class="edge" marker-end="url(#ar)"/>
+
+        <rect x="270" y="232" width="180" height="38" rx="8" class="node"/>
+        <text x="360" y="256" text-anchor="middle" font-size="13">waiver / baseline</text>
+        <line x1="360" y1="270" x2="360" y2="288" class="edge" marker-end="url(#ar)"/>
+
+        <rect x="270" y="290" width="180" height="38" rx="8" class="node"/>
+        <text x="360" y="314" text-anchor="middle" font-size="13">context prioritize</text>
+        <line x1="360" y1="328" x2="360" y2="346" class="edge" marker-end="url(#ar)"/>
+
+        <rect x="270" y="348" width="180" height="38" rx="8" class="node"/>
+        <text x="360" y="372" text-anchor="middle" font-size="13">severity floor</text>
+        <line x1="360" y1="386" x2="360" y2="404" class="edge" marker-end="url(#ar)"/>
+      </g>
+
+      <!-- Report -->
+      <rect x="270" y="406" width="180" height="40" rx="8" class="node-a"/>
+      <text x="360" y="431" text-anchor="middle" font-size="14" font-weight="600">Report</text>
+
+      <!-- fan out to adapters -->
+      <line x1="360" y1="446" x2="360" y2="462" class="edge"/>
+      <path d="M150,462 L590,462" class="edge"/>
+      <line x1="150" y1="462" x2="150" y2="480" class="edge" marker-end="url(#ar)"/>
+      <line x1="360" y1="462" x2="360" y2="480" class="edge" marker-end="url(#ar)"/>
+      <line x1="590" y1="462" x2="590" y2="480" class="edge" marker-end="url(#ar)"/>
+      <rect x="88" y="482" width="124" height="34" rx="7" class="node"/>
+      <text x="150" y="504" text-anchor="middle" font-size="12">CLI</text>
+      <rect x="298" y="482" width="124" height="34" rx="7" class="node"/>
+      <text x="360" y="504" text-anchor="middle" font-size="12">SARIF</text>
+      <rect x="528" y="482" width="124" height="34" rx="7" class="node-g"/>
+      <text x="590" y="500" text-anchor="middle" font-size="12">PR comment</text>
+      <text x="590" y="512" text-anchor="middle" font-size="9.5" class="g-fill">§11 gate</text>
+
+      <!-- cache bracket -->
+      <path d="M700,76 q10,0 10,10 v20 q0,10 -10,10" class="edge-a" fill="none"/>
+      <text x="712" y="100" font-size="10.5" class="a-fill" transform="rotate(90 712 100)">incremental cache</text>
+    </svg>
+    <figcaption><b>Finding flow, top to bottom.</b> Static output feeds the model as context
+    (the <b>ctx</b> edge) so it is never re-derived; the incremental cache reuses the static and
+    model stages when changed-file contents are unchanged. The three sources converge into one
+    finding set that every downstream stage operates on. Only the <b>PR-comment</b> adapter is
+    guarded — CLI and SARIF are local.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================ 02 BROKER ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>One guarded egress chokepoint</h2></div>
+  <p class="sec-intro">Nothing in cosmo opens its own socket. The three subsystems that touch the
+  network — sandbox provisioning, authorized external recon, and coordinated disclosure — all
+  route through a single broker, each tagged with a <em>mode</em>. The broker runs the same four
+  checks in the same order for every request, and re-checks <b>every redirect hop</b> against the
+  same policy, so a redirect can't smuggle a request to an out-of-scope host.</p>
+
+  <figure>
+    <svg class="dwg" viewBox="0 0 720 340" role="img"
+      aria-label="Three mode-tagged callers — sandbox in SANDBOX mode, external recon in EXTERNAL mode, disclosure in DISCLOSURE mode — all enter one broker. Inside, a request passes a mode gate, scope resolution on the resolved host, a global rate-limit token bucket, and a request log before reaching the network. A denied request is logged and refused. Redirects are re-checked.">
+      <defs>
+        <marker id="br-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="n-fill"/></marker>
+        <marker id="br-arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="g-fill"/></marker>
+        <marker id="br-arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="c-fill"/></marker>
+      </defs>
+
+      <!-- callers -->
+      <g>
+        <rect x="14" y="34" width="150" height="40" rx="8" class="node"/>
+        <text x="89" y="52" text-anchor="middle" font-size="12">sandbox provision</text>
+        <text x="89" y="66" text-anchor="middle" font-size="10" class="t-sm">mode = SANDBOX</text>
+
+        <rect x="14" y="122" width="150" height="40" rx="8" class="node"/>
+        <text x="89" y="140" text-anchor="middle" font-size="12">external recon</text>
+        <text x="89" y="154" text-anchor="middle" font-size="10" class="t-sm">mode = EXTERNAL</text>
+
+        <rect x="14" y="210" width="150" height="40" rx="8" class="node"/>
+        <text x="89" y="228" text-anchor="middle" font-size="12">disclosure send</text>
+        <text x="89" y="242" text-anchor="middle" font-size="10" class="t-sm">mode = DISCLOSURE</text>
+      </g>
+      <path d="M164,54 C210,54 200,142 244,142" class="edge" marker-end="url(#br-ar)"/>
+      <path d="M164,142 L244,142" class="edge" marker-end="url(#br-ar)"/>
+      <path d="M164,230 C210,230 200,142 244,142" class="edge" marker-end="url(#br-ar)"/>
+
+      <!-- broker box -->
+      <rect x="246" y="30" width="330" height="224" rx="12" class="node-g"/>
+      <text x="411" y="52" text-anchor="middle" font-size="12.5" class="g-fill" font-weight="600">EGRESS BROKER · §9a</text>
+
+      <!-- four checks -->
+      <g>
+        <rect x="266" y="66" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="87" font-size="12">1 · mode gate</text>
+        <text x="540" y="87" text-anchor="end" font-size="10" class="t-sm">scope | provisioning | endpoints</text>
+        <line x1="411" y1="100" x2="411" y2="112" class="edge" marker-end="url(#br-ar)"/>
+
+        <rect x="266" y="114" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="135" font-size="12">2 · scope resolution</text>
+        <text x="540" y="135" text-anchor="end" font-size="10" class="t-sm">on the RESOLVED host</text>
+        <line x1="411" y1="148" x2="411" y2="160" class="edge" marker-end="url(#br-ar)"/>
+
+        <rect x="266" y="162" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="183" font-size="12">3 · rate limit</text>
+        <text x="540" y="183" text-anchor="end" font-size="10" class="t-sm">one global token bucket</text>
+        <line x1="411" y1="196" x2="411" y2="208" class="edge" marker-end="url(#br-ar)"/>
+
+        <rect x="266" y="210" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="231" font-size="12">4 · request log</text>
+        <text x="540" y="231" text-anchor="end" font-size="10" class="t-sm">allowed &amp; denied alike</text>
+      </g>
+
+      <!-- out to network -->
+      <line x1="576" y1="142" x2="644" y2="142" class="edge" marker-end="url(#br-ar)"/>
+      <rect x="646" y="120" width="60" height="44" rx="8" class="node"/>
+      <text x="676" y="146" text-anchor="middle" font-size="11">net</text>
+
+      <!-- redirect loop -->
+      <path d="M676,120 C676,96 300,96 300,66" class="edge-a" fill="none" marker-end="url(#ara)"/>
+      <text x="470" y="90" text-anchor="middle" font-size="9.5" class="a-fill">every redirect re-checked</text>
+
+      <!-- denied -->
+      <path d="M411,244 C411,286 250,286 250,150" class="edge-bad" marker-end="url(#br-arc)"/>
+      <text x="300" y="300" text-anchor="middle" font-size="10.5" class="c-fill">EgressDenied — logged, refused</text>
+    </svg>
+    <figcaption><b>Every request runs checks 1→4 in order.</b> Scope is evaluated on the
+    <b>resolved</b> host, so DNS games and redirects can't dodge it; the metadata IP
+    (<code>169.254.169.254</code>) is refused even under a wildcard scope. The rate limit is
+    <b>one</b> budget shared across all tools, and both allowed and denied requests are logged as
+    the program-owner record.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================ 03 TRUST TIERS ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Config trust tiers</h2></div>
+  <p class="sec-intro">The <code>cosmo.yaml</code> that ships inside a repo under review is
+  <b>untrusted</b> — the code being scanned should never be able to relax its own review. Config
+  merges under two rules: <em>preference</em> keys (threshold, ignore-paths, providers) let the
+  repo override the operator, but <em>safety</em> keys (sandbox, fuzzing, external-targets,
+  disclosure, extensions…) are operator-only and a repo value may only ever <b>tighten</b> them.
+  A loosening value is clamped back and a warning is surfaced to the operator.</p>
+
+  <figure>
+    <svg class="dwg" viewBox="0 0 720 268" role="img"
+      aria-label="Operator config (trusted ceiling) and repo cosmo.yaml (untrusted) both enter a merge. Preference keys take the repo value. Safety keys take the repo value only when it tightens; a loosening repo value is clamped to the operator ceiling and warned. The result is the effective config.">
+      <defs>
+        <marker id="tt-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="n-fill"/></marker>
+        <marker id="tt-arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="c-fill"/></marker>
+      </defs>
+
+      <rect x="14" y="40" width="176" height="50" rx="9" class="node-a"/>
+      <text x="102" y="61" text-anchor="middle" font-size="12.5">operator / org config</text>
+      <text x="102" y="77" text-anchor="middle" font-size="10.5" class="a-fill">trusted · the ceiling</text>
+
+      <rect x="14" y="170" width="176" height="50" rx="9" class="node"/>
+      <text x="102" y="191" text-anchor="middle" font-size="12.5">repo cosmo.yaml</text>
+      <text x="102" y="207" text-anchor="middle" font-size="10.5" class="t-sm">untrusted input</text>
+
+      <!-- merge -->
+      <rect x="286" y="86" width="150" height="88" rx="10" class="node"/>
+      <text x="361" y="112" text-anchor="middle" font-size="12.5" font-weight="600">merge (§15)</text>
+      <text x="361" y="134" text-anchor="middle" font-size="10.5" class="t-sm">preference: override</text>
+      <text x="361" y="150" text-anchor="middle" font-size="10.5" class="t-sm">safety: tighten-only</text>
+
+      <path d="M190,66 C240,66 244,120 284,120" class="edge" marker-end="url(#tt-ar)"/>
+      <path d="M190,194 C240,194 244,140 284,140" class="edge" marker-end="url(#tt-ar)"/>
+
+      <!-- outcomes -->
+      <rect x="524" y="34" width="182" height="46" rx="8" class="node"/>
+      <text x="615" y="53" text-anchor="middle" font-size="11.5">pref key → repo wins</text>
+      <text x="615" y="69" text-anchor="middle" font-size="10" class="t-sm">threshold, providers…</text>
+
+      <rect x="524" y="90" width="182" height="46" rx="8" class="node"/>
+      <text x="615" y="109" text-anchor="middle" font-size="11.5">safety, tightened → ok</text>
+      <text x="615" y="125" text-anchor="middle" font-size="10" class="t-sm">repo may narrow the ceiling</text>
+
+      <rect x="524" y="146" width="182" height="52" rx="8" class="node-c"/>
+      <text x="615" y="166" text-anchor="middle" font-size="11.5" class="c-fill">safety, loosened → clamped</text>
+      <text x="615" y="182" text-anchor="middle" font-size="10" class="t-sm">reset to ceiling + warned</text>
+
+      <line x1="436" y1="112" x2="520" y2="57" class="edge" marker-end="url(#tt-ar)"/>
+      <line x1="436" y1="126" x2="520" y2="113" class="edge" marker-end="url(#tt-ar)"/>
+      <line x1="436" y1="150" x2="520" y2="168" class="edge-bad" marker-end="url(#tt-arc)"/>
+    </svg>
+    <figcaption><b>RISK-01, the load-bearing invariant.</b> Enabling a sandbox, raising a fuzz
+    duration, turning on external targets, or arming an extension are all safety-tier — a scanned
+    repo cannot do any of them. Its only power over safety config is to make it stricter.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================ 04 INVARIANTS ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Safety invariants</h2></div>
+  <p class="sec-intro">Seven properties from the original design review are carried through every
+  build step and proven under test. Each is enforced in exactly one place, so the guarantee can't
+  drift as features are added on top.</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <thead><tr><th>ID</th><th>Invariant</th><th>Enforced in</th></tr></thead>
+    <tbody>
+      <tr><td class="risk">RISK-01</td><td>A scanned repo can only <b>tighten</b> safety config, never loosen it.</td><td><span class="where">config.py · trust tiers</span></td></tr>
+      <tr><td class="risk">RISK-02</td><td>Every network touch crosses one guarded egress broker.</td><td><span class="where">broker/</span></td></tr>
+      <tr><td class="risk">RISK-03</td><td>Untrusted input (README, skills, issues, extensions) can't override the reviewer.</td><td><span class="where">skills/inject.py · extensions</span></td></tr>
+      <tr><td class="risk">RISK-04</td><td><code>not_reproducible</code> never auto-waives a finding.</td><td><span class="where">sandbox confirmation</span></td></tr>
+      <tr><td class="risk">RISK-05</td><td>The public-comment gate fails <b>closed</b> on unknown sensitivity.</td><td><span class="where">output/gate.py</span></td></tr>
+      <tr><td class="risk">RISK-06</td><td>Nothing is disclosed without explicit human approval.</td><td><span class="where">disclose/</span></td></tr>
+      <tr><td class="risk">RISK-07</td><td>Waiver fingerprints are content/AST-based, not line-based.</td><td><span class="where">waiver/</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============================ 05 BUILD MAP ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Build map — 20 steps to modules</h2></div>
+  <p class="sec-intro">The architecture was built in a fixed order, each step a real installable
+  package increment carrying its own safety property and its own tests. The counts below are the
+  passing tests in each area.</p>
+
+  <div class="grid">
+    <div class="card">
+      <div class="ph">Foundation</div><div class="steps">steps 1–6</div>
+      <h3>Engine, config &amp; pre-filter</h3>
+      <p>The <code>run_review</code> core, config trust tiers, diff resolver, output adapters + gate, waiver/baseline, static pre-filter.</p>
+      <div class="mods"><span class="chip">engine.py</span><span class="chip">config.py</span><span class="chip">static/</span><span class="chip tests">14 tests</span></div>
+    </div>
+    <div class="card">
+      <div class="ph">Network &amp; dynamic</div><div class="steps">steps 7–9</div>
+      <h3>Broker, sandbox, providers</h3>
+      <p>The single egress broker, the dynamic-analysis sandbox that depends on it, and the multi-model provider layer with the §8 data-governance gate.</p>
+      <div class="mods"><span class="chip">broker/</span><span class="chip">sandbox/</span><span class="chip">providers/</span><span class="chip tests">39 tests</span></div>
+    </div>
+    <div class="card">
+      <div class="ph">Intelligence</div><div class="steps">steps 10–12</div>
+      <h3>Skills, context, cache</h3>
+      <p>Trusted/untrusted skills with an enhancement loop, issue/comment ingestion for prioritization, and per-file incremental caching.</p>
+      <div class="mods"><span class="chip">skills/</span><span class="chip">context/</span><span class="chip">cache/</span><span class="chip tests">26 tests</span></div>
+    </div>
+    <div class="card">
+      <div class="ph">Triggers</div><div class="steps">steps 13–14</div>
+      <h3>Git hook &amp; GitHub Action</h3>
+      <p>Pre-commit / pre-push adapters and the CI action, both emitting through the same fail-closed public-comment gate.</p>
+      <div class="mods"><span class="chip">triggers/</span><span class="chip tests">13 tests</span></div>
+    </div>
+    <div class="card">
+      <div class="ph">Discovery &amp; lifecycle</div><div class="steps">steps 15–16</div>
+      <h3>Trends &amp; fuzzing</h3>
+      <p>SQLite trend store with CWE→OWASP compliance mapping, and manual-only zero-day fuzzing that triages crashes and never asserts novelty.</p>
+      <div class="mods"><span class="chip">store/</span><span class="chip">fuzz/</span><span class="chip tests">30 tests</span></div>
+    </div>
+    <div class="card">
+      <div class="ph">Session &amp; disclosure</div><div class="steps">steps 17–19</div>
+      <h3>Interactive, disclose, external</h3>
+      <p>Slash-commands over a live session that can't bypass guardrails, drafts-and-queues disclosure, and authorized <code>/scope</code> external mode.</p>
+      <div class="mods"><span class="chip">interactive/</span><span class="chip">disclose/</span><span class="chip">external/</span><span class="chip tests">39 tests</span></div>
+    </div>
+    <div class="card">
+      <div class="ph">Integration</div><div class="steps">step 20</div>
+      <h3>Claude Code plugin</h3>
+      <p>Ships as a plugin whose <code>/cosmo-*</code> surface is <em>generated</em> from the one guarded command registry and can't widen past it.</p>
+      <div class="mods"><span class="chip">plugin/</span><span class="chip tests">11 tests</span></div>
+    </div>
+    <div class="card" style="border-color:color-mix(in srgb,var(--accent) 40%,var(--border))">
+      <div class="ph">Extension point</div><div class="steps">post-build</div>
+      <h3>Custom plugins &amp; skills</h3>
+      <p>Researchers add detectors, skills, and <code>/x-*</code> commands from the outside — operator-gated, discovery ≠ activation.</p>
+      <div class="mods"><span class="chip">extensions/</span><span class="chip tests">14 tests</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 06 EXTENSIONS ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Extending it without forking</h2></div>
+  <p class="sec-intro">A researcher ships an <em>extension</em> — a Python module contributing any
+  of a detector, a skill, or an <code>/x-*</code> command. Extensions are <b>discovered</b> from
+  operator paths and installed entry points, but only <b>activated</b> when the operator lists them
+  in the safety-tier <code>extensions.enabled</code>. Discovery and activation are a real boundary:
+  a disabled extension's module is never even imported.</p>
+
+  <figure>
+    <svg class="dwg" viewBox="0 0 720 250" role="img"
+      aria-label="Candidate extensions from configured paths and installed entry points reach a discovery step, which lists names without importing. An operator allowlist gate decides: enabled names are imported and run, contributing skills, detectors, and x-commands; disabled names stay inert and are never imported. A repo attempting to add a name to the allowlist is rejected by the safety tier.">
+      <defs>
+        <marker id="ex-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="n-fill"/></marker>
+        <marker id="ex-arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="g-fill"/></marker>
+        <marker id="ex-arc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" class="c-fill"/></marker>
+      </defs>
+
+      <rect x="14" y="30" width="150" height="40" rx="8" class="node"/>
+      <text x="89" y="50" text-anchor="middle" font-size="11.5">extensions.paths</text>
+      <text x="89" y="64" text-anchor="middle" font-size="10" class="t-sm">local dirs</text>
+      <rect x="14" y="86" width="150" height="40" rx="8" class="node"/>
+      <text x="89" y="106" text-anchor="middle" font-size="11.5">entry points</text>
+      <text x="89" y="120" text-anchor="middle" font-size="10" class="t-sm">installed pkgs</text>
+
+      <rect x="212" y="52" width="140" height="52" rx="9" class="node"/>
+      <text x="282" y="74" text-anchor="middle" font-size="12">discover</text>
+      <text x="282" y="90" text-anchor="middle" font-size="10" class="t-sm">names, no import</text>
+      <line x1="164" y1="50" x2="208" y2="70" class="edge" marker-end="url(#ex-ar)"/>
+      <line x1="164" y1="106" x2="208" y2="86" class="edge" marker-end="url(#ex-ar)"/>
+
+      <!-- gate -->
+      <rect x="400" y="46" width="150" height="64" rx="10" class="node-g"/>
+      <text x="475" y="70" text-anchor="middle" font-size="12" class="g-fill" font-weight="600">operator gate</text>
+      <text x="475" y="87" text-anchor="middle" font-size="10" class="t-sm">name in enabled?</text>
+      <text x="475" y="101" text-anchor="middle" font-size="10" class="t-sm">safety tier</text>
+      <line x1="352" y1="78" x2="396" y2="78" class="edge" marker-end="url(#ex-ar)"/>
+
+      <!-- enabled -->
+      <rect x="588" y="24" width="120" height="48" rx="8" class="node-a"/>
+      <text x="648" y="44" text-anchor="middle" font-size="11.5" class="a-fill">enabled</text>
+      <text x="648" y="60" text-anchor="middle" font-size="9.5" class="t-sm">import + run</text>
+      <line x1="550" y1="66" x2="584" y2="52" class="edge-a" marker-end="url(#ex-arg)"/>
+
+      <!-- disabled -->
+      <rect x="588" y="86" width="120" height="48" rx="8" class="node"/>
+      <text x="648" y="106" text-anchor="middle" font-size="11.5">disabled</text>
+      <text x="648" y="122" text-anchor="middle" font-size="9.5" class="t-sm">never imported</text>
+      <line x1="550" y1="92" x2="584" y2="106" class="edge" marker-end="url(#ex-ar)"/>
+
+      <!-- contributions -->
+      <text x="648" y="160" text-anchor="middle" font-size="10.5" class="t-lbl">skills · detectors · /x-*</text>
+      <line x1="648" y1="72" x2="648" y2="150" class="edge" stroke-dasharray="3 3"/>
+
+      <!-- repo blocked -->
+      <rect x="212" y="176" width="150" height="44" rx="8" class="node"/>
+      <text x="287" y="196" text-anchor="middle" font-size="11.5">repo cosmo.yaml</text>
+      <text x="287" y="210" text-anchor="middle" font-size="10" class="t-sm">tries to enable</text>
+      <path d="M362,198 C420,198 448,140 460,112" class="edge-bad" marker-end="url(#ex-arc)"/>
+      <text x="452" y="200" text-anchor="middle" font-size="10" class="c-fill">rejected — safety tier</text>
+    </svg>
+    <figcaption><b>Discovery ≠ activation.</b> Enabling an extension runs third-party code
+    in-process, so it is deliberately an operator-only act. Custom commands are namespaced to
+    <code>/x-*</code> (they can't shadow <code>/report</code> or <code>/scope</code>), custom
+    findings still pass through the §11 gate, and custom-skill trust follows the operator's
+    activation.</figcaption>
+  </figure>
+</section>
+
+<!-- ============================ 07 CLAUDE CODE ============================ -->
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Relationship to Claude Code</h2></div>
+  <p class="sec-intro">cosmo does not fork Claude Code. It reuses its auth, session, and tool-use
+  by shelling to the same <code>cosmo</code> binary from every surface — the CLI, the git hook, the
+  Action, an interactive REPL, and the plugin. Enforcement therefore lives in exactly one place,
+  and no surface can reach around it.</p>
+  <ul class="clean">
+    <li><b>One binary, many triggers.</b> The plugin's <code>/cosmo-*</code> commands and the git hook both call <code>run_review</code>; there is no second, less-guarded path.</li>
+    <li><b>The plugin surface is generated, not hand-kept.</b> <code>cosmo plugin sync</code> derives the commands from the guarded registry; <code>cosmo plugin check</code> fails CI on drift, so the plugin can never expose more than the enforced layer.</li>
+    <li><b>Graceful degradation.</b> Importing cosmo never requires Claude Code or an API key — without them, the LLM stage is reported as <code>skipped:</code>, not silently passed.</li>
+  </ul>
+</section>
+
+<footer>
+  <div class="verify">
+    <span class="badge">VERIFIED</span>
+    <span>188 / 188 tests passing · 0 plugin drift · clean tree</span>
+  </div>
+  <p class="muted" style="max-width:var(--measure)">Everything on this page reflects the current
+  state of the codebase: the pipeline order is <code>engine.py</code>, the broker checks and modes
+  are <code>broker/broker.py</code>, and every invariant above has a corresponding test file. Run
+  <code>pytest -q</code> to reproduce, and <code>cosmo plugin check</code> to confirm the plugin
+  surface still matches the guarded command registry.</p>
+</footer>
+</div>
