@@ -35,3 +35,10 @@ class ModelProvider(Protocol):
 
     def review(self, diff: Diff, context: str, findings_so_far: list[Finding]) -> list[Finding]:
         ...
+
+    def complete(self, prompt: str, *, max_tokens: int = 1024) -> str:
+        """General text completion — the seam the harness-agnostic agent driver
+        (§17 option 2) uses to orchestrate on any provider. Governed by the same
+        §8 data-sensitivity gate as `review`: it exports whatever is in `prompt`
+        to `vendor` when `exports_source` is True."""
+        ...

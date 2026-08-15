@@ -47,6 +47,17 @@ class ClaudeProvider:
         text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
         return parse_findings_json(text, source="model:claude")
 
+    def complete(self, prompt: str, *, max_tokens: int = 1024) -> str:
+        import anthropic
+
+        client = anthropic.Anthropic()
+        resp = client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+
 
 def get_default_provider() -> ClaudeProvider:
     return ClaudeProvider()

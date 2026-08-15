@@ -137,12 +137,12 @@ def main(argv: list[str] | None = None) -> int:
         run_repl(args.target, operator_config=args.operator_config, autoscan=not args.no_scan)
         return 0
     if args.cmd == "agent":
-        # Model-agnostic orchestration. Defaults to the no-model rule-based
-        # planner so it runs out of the box; a provider-backed planner
-        # (interactive.llm_planner) plugs in programmatically for a real model.
-        from .interactive import rule_based_planner, run_agent
-        run_agent(args.target, rule_based_planner,
-                  operator_config=args.operator_config, autoscan=not args.no_scan)
+        # Model-agnostic orchestration. The planner is resolved from config: a
+        # live provider (Claude/Codex/DeepSeek/local Llama) when one is available
+        # and allowed by the §8 gate, otherwise the no-model rule-based planner —
+        # so it runs out of the box either way.
+        from .interactive import run_agent
+        run_agent(args.target, operator_config=args.operator_config, autoscan=not args.no_scan)
         return 0
     if args.cmd == "fuzz":
         return _cmd_fuzz(args)

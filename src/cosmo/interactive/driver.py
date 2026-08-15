@@ -242,9 +242,40 @@ def parse_plan(raw: str) -> Plan:
     return Plan(message=str(obj.get("message", "")).strip(), calls=calls)
 
 
+def provider_planner(provider) -> Planner:
+    """Back an `llm_planner` with a live provider's `complete()`. The single seam
+    between the model-agnostic loop and a real backend — Claude, Codex, DeepSeek,
+    or a local Llama all fit, since each implements `complete`."""
+    return llm_planner(lambda prompt: provider.complete(prompt))
+
+
+def resolve_planner(config, *, provider=None) -> "tuple[Planner, list[str]]":
+    """Pick the planner for a config: a live provider when one is available and
+    allowed, else the no-model rule-based planner. Honors the §8 data-governance
+    gate — an off-box vendor a sensitive repo hasn't allowed is NOT used, and its
+    `complete()` is never called, so nothing is exported to build a plan."""
+    from ..providers import resolve_primary, vendor_allowed   # lazy: keep module provider-agnostic
+
+    notes: list[str] = []
+    if provider is None:
+        provider, warns = resolve_primary(config)
+        notes += warns
+
+    ok, reason = vendor_allowed(provider, config)
+    if not ok:
+        notes.append(f"planner: {reason} — using the no-model planner instead")
+        return rule_based_planner, notes
+    if not hasattr(provider, "complete") or not provider.available():
+        notes.append(f"planner: provider {provider.name!r} can't complete "
+                     f"(no SDK/key) — using the no-model planner")
+        return rule_based_planner, notes
+    notes.append(f"planner: orchestrating with provider {provider.name!r}")
+    return provider_planner(provider), notes
+
+
 def run_agent(
     target: str,
-    planner: Planner,
+    planner: Planner | None = None,
     *,
     operator_config: str | None = None,
     read: Callable[[str], str] = input,
@@ -252,7 +283,9 @@ def run_agent(
     autoscan: bool = True,
 ) -> AgentDriver:
     """A natural-language REPL, harness-agnostic. Same guarded engine as batch
-    mode; the planner decides which commands run, the driver contains them."""
+    mode; the planner decides which commands run, the driver contains them. With
+    no planner given, one is resolved from config — a live provider if available
+    and allowed, otherwise the no-model rule-based planner."""
     from ..config import load_config
 
     def _local(t: str) -> bool:
@@ -260,6 +293,10 @@ def run_agent(
 
     config = load_config(target if _local(target) else ".", operator_config=operator_config)
     session = Session(config=config, target=target)
+    if planner is None:
+        planner, notes = resolve_planner(config)
+        for n in notes:
+            write(n)
     driver = AgentDriver(session, planner)
     write("cosmo agent — natural language over the guarded command surface. "
           "The model can only run cosmo commands; guardrails are unchanged.")
