@@ -8,9 +8,9 @@ egress); this is the boundary those later steps stand behind.
 from .broker import EgressBroker
 from .modes import Decision, EgressDenied, Mode
 from .ratelimit import TokenBucket
-from .scope import DisclosurePolicy, SandboxPolicy, Scope
+from .scope import DisclosurePolicy, ProviderPolicy, SandboxPolicy, Scope
 
 __all__ = [
     "EgressBroker", "Mode", "Decision", "EgressDenied",
-    "Scope", "SandboxPolicy", "DisclosurePolicy", "TokenBucket",
+    "Scope", "SandboxPolicy", "DisclosurePolicy", "ProviderPolicy", "TokenBucket",
 ]

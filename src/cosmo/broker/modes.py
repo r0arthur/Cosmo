@@ -16,6 +16,7 @@ class Mode(str, Enum):
     SANDBOX = "sandbox"        # §6/§7 — own build only; internal net + provisioning allowlist
     EXTERNAL = "external"      # §9 — authorized live target; requires an active /scope
     DISCLOSURE = "disclosure"  # §13 — configured disclosure endpoints only
+    PROVIDER = "provider"      # §8 — model API egress; only allow-listed provider hosts
 
     def __str__(self) -> str:  # noqa: D105
         return self.value

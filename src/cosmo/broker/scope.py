@@ -47,6 +47,26 @@ def is_forbidden_address(host: str) -> bool:
     return ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved
 
 
+# Metadata hostnames (loopback is intentionally NOT here — local models live there).
+_METADATA_HOSTNAMES = {"metadata.google.internal", "metadata"}
+
+
+def is_metadata_address(host: str) -> bool:
+    """The hard stop for PROVIDER mode: cloud-metadata endpoints only. Unlike
+    `is_forbidden_address`, loopback/private is allowed *when the operator has
+    allow-listed it* — a local or on-prem model legitimately lives there — but a
+    metadata endpoint is refused no matter what, since that is the SSRF prize a
+    repo-overridden model endpoint would aim for."""
+    host = normalize_host(host)
+    if host in _METADATA_HOSTNAMES or host in _METADATA_IPS:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_link_local            # 169.254.0.0/16 & fe80::/10 — the metadata range
+
+
 @dataclass
 class Scope:
     """An authorized external-target declaration (`/scope`, §9)."""
@@ -88,3 +108,23 @@ class DisclosurePolicy:
 
     def allows(self, host: str) -> bool:
         return any(host_matches(host, p) for p in self.allowed_endpoints)
+
+
+@dataclass
+class ProviderPolicy:
+    """Hosts PROVIDER-mode egress (the model API, §8) may reach.
+
+    Model-provider egress is operator-credentialed, but routing it through the
+    broker gives one audit log of every model call and — crucially — the same
+    forbidden-address (SSRF/metadata) block as every other mode, so a provider
+    endpoint that a repo pointed at an internal address can't be reached."""
+
+    allowed_hosts: list[str] = field(default_factory=list)
+
+    def allow(self, *hosts: str) -> None:
+        for h in hosts:
+            if h and h not in self.allowed_hosts:
+                self.allowed_hosts.append(normalize_host(h))
+
+    def allows(self, host: str) -> bool:
+        return any(host_matches(host, p) for p in self.allowed_hosts)

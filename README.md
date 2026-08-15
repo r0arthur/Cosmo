@@ -367,5 +367,5 @@ guardrail bypass in cosmo itself privately — see CONTRIBUTING.
 ## Tests
 
 ```bash
-pip install -e '.[dev]' && pytest    # 210 hermetic tests
+pip install -e '.[dev]' && pytest    # 221 hermetic tests
 ```

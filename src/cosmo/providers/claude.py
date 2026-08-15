@@ -22,8 +22,11 @@ class ClaudeProvider:
     exports_source = True   # hosted; the diff is sent to Anthropic
     roles = {PRIMARY_REVIEW, CROSS_CHECK}
 
-    def __init__(self, model: str = _MODEL):
+    _ENDPOINT = "https://api.anthropic.com/v1/messages"
+
+    def __init__(self, model: str = _MODEL, *, broker=None):
         self.model = model
+        self.broker = broker
 
     def available(self) -> bool:
         if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -36,7 +39,9 @@ class ClaudeProvider:
 
     def review(self, diff: Diff, context: str, findings_so_far: list[Finding]) -> list[Finding]:
         import anthropic
+        from .egress import guard_provider_egress
 
+        guard_provider_egress(self.broker, self._ENDPOINT, "model:claude")
         client = anthropic.Anthropic()
         resp = client.messages.create(
             model=self.model,
@@ -49,7 +54,9 @@ class ClaudeProvider:
 
     def complete(self, prompt: str, *, max_tokens: int = 1024) -> str:
         import anthropic
+        from .egress import guard_provider_egress
 
+        guard_provider_egress(self.broker, self._ENDPOINT, "model:claude")
         client = anthropic.Anthropic()
         resp = client.messages.create(
             model=self.model,
