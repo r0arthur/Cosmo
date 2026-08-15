@@ -26,6 +26,7 @@ def run_review(
     config: Config,
     provider: ModelProvider | None = None,
     context_items: list[ContextItem] | None = None,
+    model: str | None = None,
 ) -> Report:
     diff = resolve_diff(target)
     findings: list[Finding] = []
@@ -47,7 +48,10 @@ def run_review(
     # Step 1 — LLM review. Provider resolved through the layer (§8): resolution
     # order + data-governance gate + fallback to the Claude default.
     if provider is None:
-        provider, resolve_warnings = resolve_primary(config)
+        # `model` (the --model flag) enters at the CLI tier of the §8 resolution
+        # order, so it outranks the configured default but still passes the
+        # data-governance gate.
+        provider, resolve_warnings = resolve_primary(config, cli_model=model)
         notes += resolve_warnings
     # Route this provider's model-API egress through the broker (§8 + §9a): one
     # audit log, one forbidden-address block. Honors the operator allow-list.
