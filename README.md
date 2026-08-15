@@ -1,14 +1,16 @@
-# cosmo (MVP)
+# cosmo
 
-A Claude-Code-based security review tool. This is the **MVP scaffold — build
-steps 1–6** of [`../cosmo-architecture.md`](../cosmo-architecture.md): a
+A Claude-Code-based security review and zero-day discovery tool — the **complete
+20-step build** of [`../cosmo-architecture.md`](../cosmo-architecture.md): a
 diff-driven reviewer that runs a static pre-filter, hands its output to an LLM
-review (Claude default), suppresses known findings, and renders CLI / SARIF /
-PR-comment output behind a fail-closed disclosure gate.
+review (Claude default, any model pluggable), suppresses known findings, and
+renders CLI / SARIF / PR-comment output behind a fail-closed disclosure gate —
+plus a dynamic-analysis sandbox (§6), manual zero-day fuzzing (§7), authorized
+external-target mode (§9), coordinated disclosure (§13), and a Claude Code plugin
+surface (§17).
 
-Deliberately **out of scope** (later build steps, each a separate product behind
-the gate): the dynamic-analysis sandbox (§6), zero-day fuzzing (§7), and
-authorized external-target mode (§9). None of those code paths exist here.
+**→ To run it, start with [`docs/USAGE.md`](docs/USAGE.md).** The sections below
+document what each build step delivers and the safety property it carries.
 
 **Step 7 — the egress broker (§9a) — is present** (`cosmo.broker`), built ahead
 of the sandbox/external-target modes that depend on it. It is the single guarded
