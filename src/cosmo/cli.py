@@ -16,7 +16,7 @@ from .waiver import Baseline, fingerprint
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cosmo", description="cosmo security review (MVP, steps 1–6)")
+    parser = argparse.ArgumentParser(prog="cosmo", description="cosmo security review + zero-day discovery (full build, steps 1–20)")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_review = sub.add_parser("review", help="review a local path or GitHub PR")
@@ -74,6 +74,12 @@ def main(argv: list[str] | None = None) -> int:
     p_trends.add_argument("--disclosure", action="store_true",
                           help="show the coordinated-disclosure queue (§13) instead")
 
+    p_plugin = sub.add_parser("plugin", help="manage the Claude Code plugin surface (§17)")
+    p_plugin.add_argument("action", choices=["sync", "check"],
+                          help="sync: regenerate manifest+commands from code; "
+                               "check: report drift (non-zero exit if any)")
+    p_plugin.add_argument("--root", default=".", help="plugin repo root (default: cwd)")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "review":
@@ -125,6 +131,23 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fuzz(args)
     if args.cmd == "trends":
         return _cmd_trends(args)
+    if args.cmd == "plugin":
+        from .plugin import check_plugin, sync_plugin
+        if args.action == "sync":
+            changed = sync_plugin(args.root)
+            if not changed:
+                print("plugin already up to date")
+            for c in changed:
+                print(f"wrote {c}")
+            return 0
+        drift = check_plugin(args.root)
+        if not drift:
+            print("plugin surface matches the guarded command registry")
+            return 0
+        print("plugin surface is out of date — run `cosmo plugin sync`:")
+        for d in drift:
+            print(f"  {d}")
+        return 1
     return 2
 
 
