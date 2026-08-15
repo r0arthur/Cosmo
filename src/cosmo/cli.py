@@ -69,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
     p_int.add_argument("--operator-config")
     p_int.add_argument("--no-scan", action="store_true", help="don't scan on start")
 
+    p_agent = sub.add_parser("agent", help="natural-language session, harness-agnostic (§17)")
+    p_agent.add_argument("target", help="local path or GitHub PR to open a session on")
+    p_agent.add_argument("--operator-config")
+    p_agent.add_argument("--no-scan", action="store_true", help="don't scan on start")
+
     p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup (§14/§15)")
     p_trends.add_argument("target", help="local path previously scanned with --record")
     p_trends.add_argument("--disclosure", action="store_true",
@@ -130,6 +135,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "interactive":
         from .interactive import run_repl
         run_repl(args.target, operator_config=args.operator_config, autoscan=not args.no_scan)
+        return 0
+    if args.cmd == "agent":
+        # Model-agnostic orchestration. Defaults to the no-model rule-based
+        # planner so it runs out of the box; a provider-backed planner
+        # (interactive.llm_planner) plugs in programmatically for a real model.
+        from .interactive import rule_based_planner, run_agent
+        run_agent(args.target, rule_based_planner,
+                  operator_config=args.operator_config, autoscan=not args.no_scan)
         return 0
     if args.cmd == "fuzz":
         return _cmd_fuzz(args)
