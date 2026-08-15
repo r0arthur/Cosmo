@@ -22,6 +22,8 @@ def main(argv: list[str] | None = None) -> int:
     p_review = sub.add_parser("review", help="review a local path or GitHub PR")
     p_review.add_argument("target", help="local path, or PR ('owner/repo#123' / PR URL)")
     p_review.add_argument("--format", choices=["cli", "sarif", "pr"], default="cli")
+    p_review.add_argument("--model", choices=["claude", "claude-cli", "codex", "deepseek", "llama"],
+                          help="review provider (claude-cli uses the Claude Code subscription, no API key)")
     p_review.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
     p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan (§15)")
@@ -232,7 +234,9 @@ def _cmd_review(args) -> int:
     if args.no_cache:
         config.data.setdefault("incremental", {})["enabled"] = False
 
-    report = run_review(args.target, config)
+    # --model enters at the CLI tier of the §8 resolution order (outranks the
+    # configured default, still gated by data sensitivity).
+    report = run_review(args.target, config, model=args.model)
 
     if args.format == "cli":
         print(render_cli(report, color=not args.no_color))
