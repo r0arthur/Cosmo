@@ -11,11 +11,13 @@ Per outbound request, in order (§9a):
   3. Global rate limit    — one token bucket in front of all external tools.
   4. Logging              — emitted here so no tool can sidestep it.
 
-Note the deliberate boundary: operator-credentialed egress that is NOT part of
-the untrusted/attack surface — the model provider API (§8) and GitHub reads (§3)
-— is normal trusted egress and does not route through the broker. The broker
-governs sandbox provisioning, external-target recon, and disclosure delivery,
-exactly the paths §9a enumerates.
+The broker governs sandbox provisioning, external-target recon, disclosure
+delivery, and — via PROVIDER mode — model-provider API egress (§8). Provider
+calls are operator-credentialed rather than untrusted, but routing them here too
+means every network touch has exactly one audit log and one forbidden-address
+(SSRF/metadata) block, so a provider endpoint a repo pointed at an internal
+address is refused like anything else. GitHub reads (§3) remain plain trusted
+egress outside the broker.
 """
 from __future__ import annotations
 
@@ -24,7 +26,15 @@ from urllib.parse import urljoin, urlsplit
 from .log import RequestLog
 from .modes import Decision, EgressDenied, Mode
 from .ratelimit import TokenBucket
-from .scope import DisclosurePolicy, SandboxPolicy, Scope, is_forbidden_address, normalize_host
+from .scope import (
+    DisclosurePolicy,
+    ProviderPolicy,
+    SandboxPolicy,
+    Scope,
+    is_forbidden_address,
+    is_metadata_address,
+    normalize_host,
+)
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
@@ -39,7 +49,12 @@ class EgressBroker:
         self.active_scope: Scope | None = None
         self.sandbox_policy = SandboxPolicy()
         self.disclosure_policy = DisclosurePolicy()
+        self.provider_policy = ProviderPolicy()
         self._bucket: TokenBucket | None = None
+
+    def allow_provider(self, *hosts: str) -> None:
+        """Add allow-listed model-provider hosts for PROVIDER-mode egress (§8)."""
+        self.provider_policy.allow(*hosts)
 
     # --- policy declaration -------------------------------------------------
 
@@ -100,6 +115,15 @@ class EgressBroker:
             if self.disclosure_policy.allows(host):
                 return allow("configured disclosure endpoint")
             return deny("host is not a configured disclosure endpoint")
+
+        if mode is Mode.PROVIDER:
+            # Metadata is a hard stop even if allow-listed; loopback/private is
+            # fine for a local/on-prem model *when the operator listed it*.
+            if is_metadata_address(host):
+                return deny("provider endpoint resolves to a forbidden metadata address")
+            if self.provider_policy.allows(host):
+                return allow("allow-listed provider host")
+            return deny("provider host is not allow-listed")
 
         return deny(f"unknown mode: {mode}")  # pragma: no cover
 

@@ -269,6 +269,13 @@ def resolve_planner(config, *, provider=None) -> "tuple[Planner, list[str]]":
         notes.append(f"planner: provider {provider.name!r} can't complete "
                      f"(no SDK/key) — using the no-model planner")
         return rule_based_planner, notes
+    # Planning egress also crosses the broker (§8 + §9a).
+    if getattr(provider, "broker", None) is None:
+        from ..providers.egress import provider_broker_from_config
+        try:
+            provider.broker = provider_broker_from_config(config)
+        except AttributeError:
+            pass
     notes.append(f"planner: orchestrating with provider {provider.name!r}")
     return provider_planner(provider), notes
 

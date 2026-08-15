@@ -32,6 +32,7 @@ class OpenAICompatProvider:
         exports_source: bool,
         roles: set[str],
         transport: Transport | None = None,
+        broker=None,
     ):
         self.name = name
         self.vendor = vendor
@@ -40,7 +41,16 @@ class OpenAICompatProvider:
         self.key_env = key_env
         self.exports_source = exports_source
         self.roles = roles
+        self.broker = broker
         self._transport = transport or _urllib_transport
+
+    @property
+    def _completions_url(self) -> str:
+        return f"{self.endpoint}/chat/completions"
+
+    def _guard(self) -> None:
+        from .egress import guard_provider_egress
+        guard_provider_egress(self.broker, self._completions_url, f"model:{self.name}")
 
     def available(self) -> bool:
         # Hosted providers need a key; a local endpoint (no key_env) is assumed reachable.
@@ -48,10 +58,14 @@ class OpenAICompatProvider:
             return True
         return bool(os.environ.get(self.key_env))
 
-    def review(self, diff: Diff, context: str, findings_so_far: list[Finding]) -> list[Finding]:
+    def _headers(self) -> dict:
         headers = {"Content-Type": "application/json"}
         if self.key_env:
             headers["Authorization"] = f"Bearer {os.environ.get(self.key_env, '')}"
+        return headers
+
+    def review(self, diff: Diff, context: str, findings_so_far: list[Finding]) -> list[Finding]:
+        self._guard()
         body = {
             "model": self.model,
             "messages": [
@@ -60,24 +74,19 @@ class OpenAICompatProvider:
             ],
             "temperature": 0,
         }
-        resp = self._transport(f"{self.endpoint}/chat/completions", headers, body)
+        resp = self._transport(self._completions_url, self._headers(), body)
         text = resp["choices"][0]["message"]["content"]
         return parse_findings_json(text, source=f"model:{self.name}")
 
-    def _headers(self) -> dict:
-        headers = {"Content-Type": "application/json"}
-        if self.key_env:
-            headers["Authorization"] = f"Bearer {os.environ.get(self.key_env, '')}"
-        return headers
-
     def complete(self, prompt: str, *, max_tokens: int = 1024) -> str:
+        self._guard()
         body = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
             "max_tokens": max_tokens,
         }
-        resp = self._transport(f"{self.endpoint}/chat/completions", self._headers(), body)
+        resp = self._transport(self._completions_url, self._headers(), body)
         return resp["choices"][0]["message"]["content"]
 
 

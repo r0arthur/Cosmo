@@ -49,6 +49,14 @@ def run_review(
     if provider is None:
         provider, resolve_warnings = resolve_primary(config)
         notes += resolve_warnings
+    # Route this provider's model-API egress through the broker (§8 + §9a): one
+    # audit log, one forbidden-address block. Honors the operator allow-list.
+    if getattr(provider, "broker", None) is None:
+        from .providers.egress import provider_broker_from_config
+        try:
+            provider.broker = provider_broker_from_config(config)
+        except AttributeError:
+            pass  # a provider that doesn't accept a broker (e.g. a test stub)
     if provider.available():
         context = _review_context(diff, static_findings, config, notes)
         m_key = model_key(file_contents, provider.name, context)

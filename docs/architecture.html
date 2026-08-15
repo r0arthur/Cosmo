@@ -154,7 +154,7 @@
 
   <div class="stats">
     <div class="stat"><div class="n">20</div><div class="l">build steps, all present</div></div>
-    <div class="stat ok"><div class="n">210</div><div class="l">hermetic tests passing</div></div>
+    <div class="stat ok"><div class="n">221</div><div class="l">hermetic tests passing</div></div>
     <div class="stat"><div class="n">7</div><div class="l">safety invariants (RISK-01…07)</div></div>
     <div class="stat"><div class="n">1</div><div class="l">egress chokepoint</div></div>
     <div class="stat"><div class="n">0</div><div class="l">forks of Claude Code</div></div>
@@ -264,15 +264,15 @@
 <!-- ============================ 02 BROKER ============================ -->
 <section>
   <div class="sec-head"><span class="sec-num">02</span><h2>One guarded egress chokepoint</h2></div>
-  <p class="sec-intro">Nothing in cosmo opens its own socket. The three subsystems that touch the
-  network — sandbox provisioning, authorized external recon, and coordinated disclosure — all
-  route through a single broker, each tagged with a <em>mode</em>. The broker runs the same four
-  checks in the same order for every request, and re-checks <b>every redirect hop</b> against the
-  same policy, so a redirect can't smuggle a request to an out-of-scope host.</p>
+  <p class="sec-intro">Nothing in cosmo opens its own socket. The four subsystems that touch the
+  network — sandbox provisioning, authorized external recon, coordinated disclosure, and the model
+  provider API — all route through a single broker, each tagged with a <em>mode</em>. The broker
+  runs the same checks in the same order for every request, and re-checks <b>every redirect hop</b>
+  against the same policy, so a redirect can't smuggle a request to an out-of-scope host.</p>
 
   <figure>
-    <svg class="dwg" viewBox="0 0 720 340" role="img"
-      aria-label="Three mode-tagged callers — sandbox in SANDBOX mode, external recon in EXTERNAL mode, disclosure in DISCLOSURE mode — all enter one broker. Inside, a request passes a mode gate, scope resolution on the resolved host, a global rate-limit token bucket, and a request log before reaching the network. A denied request is logged and refused. Redirects are re-checked.">
+    <svg class="dwg" viewBox="0 0 720 360" role="img"
+      aria-label="Four mode-tagged callers — sandbox in SANDBOX mode, external recon in EXTERNAL mode, disclosure in DISCLOSURE mode, and the model provider API in PROVIDER mode — all enter one broker. Inside, a request passes a mode gate, scope resolution on the resolved host, a global rate-limit token bucket, and a request log before reaching the network. A denied request is logged and refused. Redirects are re-checked.">
       <defs>
         <marker id="br-ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" class="n-fill"/></marker>
@@ -284,66 +284,71 @@
 
       <!-- callers -->
       <g>
-        <rect x="14" y="34" width="150" height="40" rx="8" class="node"/>
-        <text x="89" y="52" text-anchor="middle" font-size="12">sandbox provision</text>
-        <text x="89" y="66" text-anchor="middle" font-size="10" class="t-sm">mode = SANDBOX</text>
+        <rect x="14" y="24" width="152" height="38" rx="8" class="node"/>
+        <text x="90" y="41" text-anchor="middle" font-size="11.5">sandbox provision</text>
+        <text x="90" y="55" text-anchor="middle" font-size="9.5" class="t-sm">mode = SANDBOX</text>
 
-        <rect x="14" y="122" width="150" height="40" rx="8" class="node"/>
-        <text x="89" y="140" text-anchor="middle" font-size="12">external recon</text>
-        <text x="89" y="154" text-anchor="middle" font-size="10" class="t-sm">mode = EXTERNAL</text>
+        <rect x="14" y="98" width="152" height="38" rx="8" class="node"/>
+        <text x="90" y="115" text-anchor="middle" font-size="11.5">external recon</text>
+        <text x="90" y="129" text-anchor="middle" font-size="9.5" class="t-sm">mode = EXTERNAL</text>
 
-        <rect x="14" y="210" width="150" height="40" rx="8" class="node"/>
-        <text x="89" y="228" text-anchor="middle" font-size="12">disclosure send</text>
-        <text x="89" y="242" text-anchor="middle" font-size="10" class="t-sm">mode = DISCLOSURE</text>
+        <rect x="14" y="172" width="152" height="38" rx="8" class="node"/>
+        <text x="90" y="189" text-anchor="middle" font-size="11.5">disclosure send</text>
+        <text x="90" y="203" text-anchor="middle" font-size="9.5" class="t-sm">mode = DISCLOSURE</text>
+
+        <rect x="14" y="246" width="152" height="38" rx="8" class="node-a"/>
+        <text x="90" y="263" text-anchor="middle" font-size="11.5">model provider API</text>
+        <text x="90" y="277" text-anchor="middle" font-size="9.5" class="a-fill">mode = PROVIDER · §8</text>
       </g>
-      <path d="M164,54 C210,54 200,142 244,142" class="edge" marker-end="url(#br-ar)"/>
-      <path d="M164,142 L244,142" class="edge" marker-end="url(#br-ar)"/>
-      <path d="M164,230 C210,230 200,142 244,142" class="edge" marker-end="url(#br-ar)"/>
+      <path d="M166,43 C210,43 200,150 244,150" class="edge" marker-end="url(#br-ar)"/>
+      <path d="M166,117 C205,117 205,150 244,150" class="edge" marker-end="url(#br-ar)"/>
+      <path d="M166,191 C205,191 205,150 244,150" class="edge" marker-end="url(#br-ar)"/>
+      <path d="M166,265 C210,265 200,150 244,150" class="edge" marker-end="url(#br-ar)"/>
 
       <!-- broker box -->
-      <rect x="246" y="30" width="330" height="224" rx="12" class="node-g"/>
-      <text x="411" y="52" text-anchor="middle" font-size="12.5" class="g-fill" font-weight="600">EGRESS BROKER · §9a</text>
+      <rect x="246" y="38" width="330" height="224" rx="12" class="node-g"/>
+      <text x="411" y="60" text-anchor="middle" font-size="12.5" class="g-fill" font-weight="600">EGRESS BROKER · §9a</text>
 
-      <!-- four checks -->
+      <!-- checks -->
       <g>
-        <rect x="266" y="66" width="290" height="34" rx="7" class="node"/>
-        <text x="282" y="87" font-size="12">1 · mode gate</text>
-        <text x="540" y="87" text-anchor="end" font-size="10" class="t-sm">scope | provisioning | endpoints</text>
-        <line x1="411" y1="100" x2="411" y2="112" class="edge" marker-end="url(#br-ar)"/>
+        <rect x="266" y="74" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="95" font-size="12">1 · mode gate</text>
+        <text x="540" y="95" text-anchor="end" font-size="10" class="t-sm">scope | endpoints | allow-list</text>
+        <line x1="411" y1="108" x2="411" y2="120" class="edge" marker-end="url(#br-ar)"/>
 
-        <rect x="266" y="114" width="290" height="34" rx="7" class="node"/>
-        <text x="282" y="135" font-size="12">2 · scope resolution</text>
-        <text x="540" y="135" text-anchor="end" font-size="10" class="t-sm">on the RESOLVED host</text>
-        <line x1="411" y1="148" x2="411" y2="160" class="edge" marker-end="url(#br-ar)"/>
+        <rect x="266" y="122" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="143" font-size="12">2 · resolved-host / SSRF check</text>
+        <text x="540" y="143" text-anchor="end" font-size="10" class="t-sm">metadata &amp; internal refused</text>
+        <line x1="411" y1="156" x2="411" y2="168" class="edge" marker-end="url(#br-ar)"/>
 
-        <rect x="266" y="162" width="290" height="34" rx="7" class="node"/>
-        <text x="282" y="183" font-size="12">3 · rate limit</text>
-        <text x="540" y="183" text-anchor="end" font-size="10" class="t-sm">one global token bucket</text>
-        <line x1="411" y1="196" x2="411" y2="208" class="edge" marker-end="url(#br-ar)"/>
+        <rect x="266" y="170" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="191" font-size="12">3 · rate limit</text>
+        <text x="540" y="191" text-anchor="end" font-size="10" class="t-sm">one global token bucket</text>
+        <line x1="411" y1="204" x2="411" y2="216" class="edge" marker-end="url(#br-ar)"/>
 
-        <rect x="266" y="210" width="290" height="34" rx="7" class="node"/>
-        <text x="282" y="231" font-size="12">4 · request log</text>
-        <text x="540" y="231" text-anchor="end" font-size="10" class="t-sm">allowed &amp; denied alike</text>
+        <rect x="266" y="218" width="290" height="34" rx="7" class="node"/>
+        <text x="282" y="239" font-size="12">4 · request log</text>
+        <text x="540" y="239" text-anchor="end" font-size="10" class="t-sm">allowed &amp; denied alike</text>
       </g>
 
       <!-- out to network -->
-      <line x1="576" y1="142" x2="644" y2="142" class="edge" marker-end="url(#br-ar)"/>
-      <rect x="646" y="120" width="60" height="44" rx="8" class="node"/>
-      <text x="676" y="146" text-anchor="middle" font-size="11">net</text>
+      <line x1="576" y1="150" x2="644" y2="150" class="edge" marker-end="url(#br-ar)"/>
+      <rect x="646" y="128" width="60" height="44" rx="8" class="node"/>
+      <text x="676" y="154" text-anchor="middle" font-size="11">net</text>
 
       <!-- redirect loop -->
-      <path d="M676,120 C676,96 300,96 300,66" class="edge-a" fill="none" marker-end="url(#ara)"/>
-      <text x="470" y="90" text-anchor="middle" font-size="9.5" class="a-fill">every redirect re-checked</text>
+      <path d="M676,128 C676,100 300,104 300,74" class="edge-a" fill="none" marker-end="url(#ara)"/>
+      <text x="470" y="98" text-anchor="middle" font-size="9.5" class="a-fill">every redirect re-checked</text>
 
       <!-- denied -->
-      <path d="M411,244 C411,286 250,286 250,150" class="edge-bad" marker-end="url(#br-arc)"/>
-      <text x="300" y="300" text-anchor="middle" font-size="10.5" class="c-fill">EgressDenied — logged, refused</text>
+      <path d="M411,252 C411,300 250,300 250,158" class="edge-bad" marker-end="url(#br-arc)"/>
+      <text x="308" y="316" text-anchor="middle" font-size="10.5" class="c-fill">EgressDenied — logged, refused</text>
     </svg>
-    <figcaption><b>Every request runs checks 1→4 in order.</b> Scope is evaluated on the
-    <b>resolved</b> host, so DNS games and redirects can't dodge it; the metadata IP
-    (<code>169.254.169.254</code>) is refused even under a wildcard scope. The rate limit is
-    <b>one</b> budget shared across all tools, and both allowed and denied requests are logged as
-    the program-owner record.</figcaption>
+    <figcaption><b>One chokepoint, four modes.</b> Each mode bounds what a request can reach:
+    EXTERNAL needs an active <code>/scope</code>, DISCLOSURE only configured endpoints, and
+    PROVIDER only allow-listed model hosts. The SSRF check runs on the <b>resolved</b> host, so a
+    provider endpoint a repo re-pointed at the metadata IP (<code>169.254.169.254</code>) is
+    refused like any other mode — and every model call now lands on the one audit log.</figcaption>
   </figure>
 </section>
 
@@ -582,7 +587,7 @@
 <footer>
   <div class="verify">
     <span class="badge">VERIFIED</span>
-    <span>210 / 210 tests passing · 0 plugin drift · clean tree</span>
+    <span>221 / 221 tests passing · 0 plugin drift · clean tree</span>
   </div>
   <p class="muted" style="max-width:var(--measure)">Everything on this page reflects the current
   state of the codebase: the pipeline order is <code>engine.py</code>, the broker checks and modes
