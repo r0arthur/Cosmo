@@ -64,6 +64,22 @@ class OpenAICompatProvider:
         text = resp["choices"][0]["message"]["content"]
         return parse_findings_json(text, source=f"model:{self.name}")
 
+    def _headers(self) -> dict:
+        headers = {"Content-Type": "application/json"}
+        if self.key_env:
+            headers["Authorization"] = f"Bearer {os.environ.get(self.key_env, '')}"
+        return headers
+
+    def complete(self, prompt: str, *, max_tokens: int = 1024) -> str:
+        body = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+            "max_tokens": max_tokens,
+        }
+        resp = self._transport(f"{self.endpoint}/chat/completions", self._headers(), body)
+        return resp["choices"][0]["message"]["content"]
+
 
 def _urllib_transport(url: str, headers: dict, json_body: dict) -> dict:  # pragma: no cover - network
     import urllib.request

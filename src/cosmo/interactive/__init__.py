@@ -21,6 +21,8 @@ from .driver import (
     TurnResult,
     llm_planner,
     parse_plan,
+    provider_planner,
+    resolve_planner,
     rule_based_planner,
     run_agent,
 )
@@ -32,4 +34,5 @@ __all__ = [
     # Harness-agnostic driver (§17 option 2) — orchestration on any model, or none.
     "AgentDriver", "run_agent", "Planner", "Plan", "PlanRequest", "CommandCall",
     "ToolSpec", "TurnResult", "rule_based_planner", "llm_planner", "parse_plan",
+    "provider_planner", "resolve_planner",
 ]
