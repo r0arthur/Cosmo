@@ -94,7 +94,38 @@ def test_nonzero_exit_raises(monkeypatch):
         stderr = "boom"
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: P())
     try:
-        ClaudeCLIProvider()._run_cli("x")
+        # no retries + no real sleep: assert the underlying error surfaces
+        ClaudeCLIProvider(retries=0, sleep=lambda s: None)._run_cli("x")
         assert False, "expected RuntimeError"
     except RuntimeError as e:
         assert "claude CLI exited 1" in str(e)
+
+
+# --- retry/backoff on transient failure (large-file/audit robustness) -------
+
+def test_run_cli_retries_transient_failure_then_succeeds(monkeypatch):
+    import subprocess
+    calls = {"n": 0}
+    class _P:
+        def __init__(self, rc, out): self.returncode = rc; self.stdout = out; self.stderr = ""
+    def fake_run(*a, **k):
+        calls["n"] += 1
+        return _P(1, "") if calls["n"] < 3 else _P(0, "OK")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    slept = []
+    p = ClaudeCLIProvider(retries=2, backoff=1.0, sleep=slept.append)
+    assert p._run_cli("x") == "OK"
+    assert calls["n"] == 3                 # failed twice, succeeded on the third
+    assert slept == [1.0, 2.0]             # exponential backoff between attempts
+
+def test_run_cli_gives_up_after_retries(monkeypatch):
+    import subprocess
+    class _P:
+        returncode = 1; stdout = ""; stderr = "boom"
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _P())
+    p = ClaudeCLIProvider(retries=2, backoff=0.0, sleep=lambda s: None)
+    try:
+        p._run_cli("x")
+        assert False, "expected RuntimeError"
+    except RuntimeError as e:
+        assert "after 3 attempts" in str(e)
