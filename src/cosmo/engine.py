@@ -28,6 +28,7 @@ def run_review(
     context_items: list[ContextItem] | None = None,
     model: str | None = None,
     audit: bool = False,
+    progress=None,
 ) -> Report:
     diff = resolve_diff(target)
     findings: list[Finding] = []
@@ -69,7 +70,8 @@ def run_review(
             # (§ cost guard). Not cached — each file is a distinct model call.
             from .audit import run_llm_audit
             findings += run_llm_audit(
-                diff, provider, context, list(findings), config, notes, skipped)
+                diff, provider, context, list(findings), config, notes, skipped,
+                progress=progress)
         else:
             m_key = model_key(file_contents, provider.name, context)
             try:

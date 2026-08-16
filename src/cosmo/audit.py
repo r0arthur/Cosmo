@@ -15,9 +15,15 @@ silently dropped — the operator sees exactly what was and wasn't covered.
 """
 from __future__ import annotations
 
+from typing import Callable
+
 from .config import Config
 from .diff.resolver import Diff
 from .findings import Finding
+
+# Called with a human-readable progress line as each file is reviewed, so a slow
+# multi-call audit shows it is working instead of looking hung.
+Progress = Callable[[str], None]
 
 # Conservative default so `--audit` with no operator config can't surprise the
 # user with a huge run; the operator raises it deliberately.
@@ -48,24 +54,39 @@ def run_llm_audit(
     config: Config,
     notes: list[str],
     skipped: list[str],
+    progress: Progress | None = None,
 ) -> list[Finding]:
     """Review a whole project file-by-file, bounded by the call budget.
 
     A per-file review error is isolated (recorded in `skipped`) and never aborts
     the rest of the audit. The number reviewed vs. total, and any un-audited
-    remainder, are always surfaced in `notes`.
+    remainder, are always surfaced in `notes`. `progress`, if given, is called
+    with a status line as each file is reviewed (for slow multi-call runs).
     """
     budget = audit_call_budget(config)
     chunks = chunk_by_file(diff)
     reviewed = chunks[:budget]      # the hard cap — never exceeded
 
+    def _say(msg: str) -> None:
+        if progress is not None:
+            progress(msg)
+
+    total = len(reviewed)
+    _say(f"llm-audit: reviewing {total} file(s) with model:{provider.name} "
+         f"(budget {budget}, {len(chunks)} total)…")
+
     out: list[Finding] = []
-    for sub in reviewed:
+    for i, sub in enumerate(reviewed, start=1):
         path = sub.files[0].path if sub.files else "?"
+        _say(f"  [{i}/{total}] {path}")
         try:
-            out += provider.review(sub, context, findings_so_far + out)
+            found = provider.review(sub, context, findings_so_far + out)
+            out += found
+            if found:
+                _say(f"        → {len(found)} finding(s)")
         except Exception as exc:    # one bad file doesn't sink the audit
             skipped.append(f"model:{provider.name} audit {path} (error: {exc})")
+            _say(f"        → skipped (error: {str(exc)[:80]})")
 
     notes.append(
         f"llm-audit: reviewed {len(reviewed)}/{len(chunks)} file(s) "

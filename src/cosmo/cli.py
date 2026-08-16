@@ -27,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     p_review.add_argument("--audit", action="store_true",
                           help="whole-project AI audit: review every file with the LLM "
                                "(bounded by llm_audit.max_files), not just the diff")
+    p_review.add_argument("--verbose", "-v", action="store_true",
+                          help="stream progress to stderr as each stage/file runs")
     p_review.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
     p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan (§15)")
@@ -247,9 +249,21 @@ def _cmd_review(args) -> int:
     if args.no_cache:
         config.data.setdefault("incremental", {})["enabled"] = False
 
+    # Live progress → stderr (keeps stdout clean for --format sarif/pr). The audit
+    # path streams per-file progress; always on for --audit (it's slow), and
+    # --verbose additionally announces the run.
+    progress = None
+    if args.audit or args.verbose:
+        def progress(msg: str) -> None:
+            print(msg, file=sys.stderr, flush=True)
+    if args.verbose:
+        progress(f"cosmo: reviewing {args.target}"
+                 + (f" (audit, model={args.model or 'default'})" if args.audit else ""))
+
     # --model enters at the CLI tier of the §8 resolution order (outranks the
     # configured default, still gated by data sensitivity).
-    report = run_review(args.target, config, model=args.model, audit=args.audit)
+    report = run_review(args.target, config, model=args.model, audit=args.audit,
+                        progress=progress)
 
     if args.format == "cli":
         print(render_cli(report, color=not args.no_color))
