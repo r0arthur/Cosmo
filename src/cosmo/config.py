@@ -32,6 +32,9 @@ SAFETY_SECTIONS = {
     # Third-party extensions run in-process, so *enabling* one is a full-trust act
     # the operator must make — a scanned repo can never enable or add an extension.
     "extensions",
+    # The whole-project LLM-audit call budget is a cost guard: the operator caps
+    # how many files an audit sends to the model; a repo may only lower the cap.
+    "llm_audit",
 }
 
 # Data-sensitivity ranked (higher = more restrictive). A repo may only raise it.
@@ -101,6 +104,8 @@ CLAMP_RULES: dict[str, Clamp] = {
     "fuzzing.confirm_above": _clamp_duration_min,
     # A repo may raise data sensitivity (tighten); sensitive_allowed_vendors is operator-only.
     "providers_policy.data_sensitivity": _clamp_sensitivity,
+    # A repo may only lower the whole-project audit's per-run file/call budget.
+    "llm_audit.max_files": _clamp_min,
 }
 
 
@@ -189,6 +194,9 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
     # only names in `enabled` are *activated* (imported + run). `reference_only`
     # loads an enabled extension's skills as UNTRUSTED reference (RISK-03).
     "extensions": {"enabled": [], "paths": [], "reference_only": []},
+    # Whole-project LLM audit (`cosmo review --audit`): max files sent to the model
+    # in one run. Operator ceiling; a repo may only lower it. See cosmo.audit.
+    "llm_audit": {"max_files": 50},
 }
 
 

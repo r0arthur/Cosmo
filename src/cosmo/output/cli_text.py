@@ -54,4 +54,9 @@ def render_cli(report: Report, color: bool | None = None) -> str:
         lines.append(f"({waived} waived, suppressed)")
     for s in report.skipped_stages:
         lines.append(f"  skipped: {s}")
+    # Operator-facing notes (coverage, cache reuse, audit budget, clamps). These
+    # carry the "what did/didn't run" signal — e.g. the llm-audit coverage line —
+    # so they must be visible, not just live on the Report object.
+    for n in report.notes:
+        lines.append(f"  note: {n}")
     return "\n".join(lines)

@@ -27,6 +27,7 @@ def run_review(
     provider: ModelProvider | None = None,
     context_items: list[ContextItem] | None = None,
     model: str | None = None,
+    audit: bool = False,
 ) -> Report:
     diff = resolve_diff(target)
     findings: list[Finding] = []
@@ -63,15 +64,22 @@ def run_review(
             pass  # a provider that doesn't accept a broker (e.g. a test stub)
     if provider.available():
         context = _review_context(diff, static_findings, config, notes)
-        m_key = model_key(file_contents, provider.name, context)
-        try:
-            model_findings, m_hit = cache_or_run(
-                cache, m_key, lambda: provider.review(diff, context, list(findings)))
-            findings += model_findings
-            if m_hit:
-                notes.append(f"incremental: reused cached model:{provider.name} results")
-        except Exception as exc:  # never silently skip review (§8) — record it
-            skipped.append(f"model:{provider.name} (error: {exc})")
+        if audit:
+            # Whole-project audit: review file-by-file under a hard call budget
+            # (§ cost guard). Not cached — each file is a distinct model call.
+            from .audit import run_llm_audit
+            findings += run_llm_audit(
+                diff, provider, context, list(findings), config, notes, skipped)
+        else:
+            m_key = model_key(file_contents, provider.name, context)
+            try:
+                model_findings, m_hit = cache_or_run(
+                    cache, m_key, lambda: provider.review(diff, context, list(findings)))
+                findings += model_findings
+                if m_hit:
+                    notes.append(f"incremental: reused cached model:{provider.name} results")
+            except Exception as exc:  # never silently skip review (§8) — record it
+                skipped.append(f"model:{provider.name} (error: {exc})")
     else:
         skipped.append(f"model:{provider.name} (unavailable — no SDK or ANTHROPIC_API_KEY)")
 
