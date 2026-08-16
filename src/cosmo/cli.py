@@ -231,6 +231,16 @@ def _cmd_fuzz(args) -> int:
 
 
 def _cmd_review(args) -> int:
+    # A local target must exist. (A PR ref 'owner/repo#N' or URL is resolved
+    # remotely, so skip the path check for those.) Catches e.g. an unset $VAR
+    # expanding to a bogus path before we scan the wrong tree.
+    import os.path as _osp
+    is_remote = "#" in args.target or args.target.startswith("http")
+    if not is_remote and not _osp.exists(args.target):
+        print(f"error: target path does not exist: {args.target!r}\n"
+              f"(for a GitHub PR use 'owner/repo#123' or a pull-request URL)")
+        return 2
+
     config = load_config(_target_dir(args.target), operator_config=args.operator_config)
     if args.threshold:
         config.data["threshold"] = args.threshold  # CLI flag beats config for this preference
