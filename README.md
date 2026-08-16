@@ -288,23 +288,27 @@ public gate withholds by default on unknown sensitivity, the waiver fingerprint
 survives line shifts without suppressing genuinely new instances, every network
 touch funnels through one guarded broker, fuzzing never asserts novelty, nothing
 is disclosed without explicit human approval, and the plugin surface cannot widen
-past the enforced command layer. **174 tests pass.**
+past the enforced command layer. **231 tests pass.**
 
 ## Install & run
 
 ```bash
-pip install -e .            # core (PyYAML only)
-pip install -e '.[claude]'  # + Anthropic SDK for the LLM stage
-export ANTHROPIC_API_KEY=…  # optional; without it the LLM stage is skipped, not failed
+python -m venv ~/cosmo-venv
+~/cosmo-venv/bin/pip install -e . semgrep     # cosmo + the static scanner
+ln -s ~/cosmo-venv/bin/cosmo ~/.local/bin/cosmo
 
-cosmo review .                         # local working-tree diff
-cosmo review owner/repo#123            # a GitHub PR (needs the gh CLI)
+cosmo review .                         # local working-tree diff (static only)
+cosmo review owner/repo#123            # a GitHub PR, online (needs the gh CLI)
+cosmo review . --model claude-cli      # + AI review on your Claude Code subscription
 cosmo review . --format sarif          # CI output
 cosmo review . --format pr             # preview the gated public comment
 ```
 
-The static tools (`semgrep`, `gitleaks`) are optional — if absent, that stage is
-listed under `skipped:` rather than failing the scan.
+The static scan needs no account. To add the LLM review, either use the Claude
+Code CLI on your **subscription** (`--model claude-cli`, no API key) or set
+`ANTHROPIC_API_KEY` for the built-in API provider. Everything is optional and
+degrades gracefully — a missing tool, key, or `gh` is listed under `skipped:`
+rather than failing the scan. **Full run guide: [`docs/USAGE.md`](docs/USAGE.md).**
 
 ### Waivers
 
@@ -369,5 +373,5 @@ guardrail bypass in cosmo itself privately — see CONTRIBUTING.
 ## Tests
 
 ```bash
-pip install -e '.[dev]' && pytest    # 221 hermetic tests
+pip install -e '.[dev]' && pytest    # 231 hermetic tests
 ```
