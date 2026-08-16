@@ -83,7 +83,9 @@ def run_review(
     else:
         skipped.append(f"model:{provider.name} (unavailable — no SDK or ANTHROPIC_API_KEY)")
 
-    cache.save()
+    if not cache.save() and cache.enabled:
+        notes.append("cache: could not write .cosmo cache (read-only/permission) — "
+                     "review unaffected, no incremental speedup next run")
 
     # Custom extension detectors (operator-gated). Their output is normalized into
     # the shared Finding shape and joins the same downstream path — dedupe, waiver,
