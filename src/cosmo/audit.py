@@ -24,6 +24,9 @@ from .findings import Finding
 # Called with a human-readable progress line as each file is reviewed, so a slow
 # multi-call audit shows it is working instead of looking hung.
 Progress = Callable[[str], None]
+# Called after each file with (path, that file's findings), so a caller running
+# the audit in the background can merge findings into live state incrementally.
+OnResult = Callable[[str, "list[Finding]"], None]
 
 # Conservative default so `--audit` with no operator config can't surprise the
 # user with a huge run; the operator raises it deliberately.
@@ -55,6 +58,7 @@ def run_llm_audit(
     notes: list[str],
     skipped: list[str],
     progress: Progress | None = None,
+    on_result: OnResult | None = None,
 ) -> list[Finding]:
     """Review a whole project file-by-file, bounded by the call budget.
 
@@ -84,6 +88,8 @@ def run_llm_audit(
             out += found
             if found:
                 _say(f"        → {len(found)} finding(s)")
+            if on_result is not None:
+                on_result(path, found)
         except Exception as exc:    # one bad file doesn't sink the audit
             skipped.append(f"model:{provider.name} audit {path} (error: {exc})")
             _say(f"        → skipped (error: {str(exc)[:80]})")

@@ -167,3 +167,105 @@ def test_repl_loop_runs_commands(tmp_path):
                  write=outputs.append, autoscan=False)
     assert s.effective_threshold() == "high"
     assert any("threshold: high" in o for o in outputs)
+
+
+# --- /audit — whole-project AI audit inside a live session -----------------
+
+def _fake_provider():
+    from cosmo.severity import Severity
+
+    class _P:
+        name = "fake"
+        vendor = "local"
+        exports_source = False
+        roles = {"primary_review"}
+        broker = None
+
+        def available(self):
+            return True
+
+        def review(self, diff, context, findings_so_far):
+            p = diff.files[0].path
+            return [Finding(id="m-0", title=f"vuln in {p}", severity=Severity.HIGH,
+                            source="model:fake", file=p, line=1)]
+    return _P()
+
+
+def test_audit_runs_in_background_and_merges(tmp_path, monkeypatch):
+    # two files → two per-file reviews on a background thread; findings land in
+    # session state and the REPL stays responsive (dispatch returns immediately).
+    (tmp_path / "a.py").write_text("import os\n")
+    (tmp_path / "b.py").write_text("import sys\n")
+    s = Session(config=Config(data={"llm_audit": {"max_files": 50}}), target=str(tmp_path))
+    streamed = []
+    s.writer = streamed.append
+    import cosmo.providers.registry as reg
+    monkeypatch.setattr(reg, "resolve_primary", lambda *a, **k: (_fake_provider(), []))
+    out = dispatch(s, "/audit")
+    assert "started in the background" in out          # returned without blocking
+    assert s.audit_thread is not None
+    s.audit_thread.join(timeout=5)                     # let it finish for the assert
+    joined = "\n".join(streamed)
+    assert "[1/2]" in joined and "[2/2]" in joined
+    assert len(s.findings) == 2                         # merged live per file
+    assert s.audit_done == 2 and not s.audit_running()
+
+def test_audit_wait_blocks_until_done(tmp_path, monkeypatch):
+    (tmp_path / "a.py").write_text("import os\n")
+    s = Session(config=Config(data={}), target=str(tmp_path))
+    s.writer = lambda m: None
+    import cosmo.providers.registry as reg
+    monkeypatch.setattr(reg, "resolve_primary", lambda *a, **k: (_fake_provider(), []))
+    dispatch(s, "/audit wait")                          # synchronous variant
+    assert not s.audit_running() and len(s.findings) == 1
+
+def test_status_reports_audit_state(tmp_path, monkeypatch):
+    (tmp_path / "a.py").write_text("import os\n")
+    s = Session(config=Config(data={}), target=str(tmp_path))
+    s.writer = lambda m: None
+    import cosmo.providers.registry as reg
+    monkeypatch.setattr(reg, "resolve_primary", lambda *a, **k: (_fake_provider(), []))
+    dispatch(s, "/audit wait")
+    assert "audit: done" in dispatch(s, "/status")
+
+def test_second_audit_refused_while_running(tmp_path, monkeypatch):
+    import threading
+    (tmp_path / "a.py").write_text("import os\n")
+    s = Session(config=Config(data={}), target=str(tmp_path))
+    s.writer = lambda m: None
+    gate = threading.Event()
+    from cosmo.severity import Severity
+
+    class _Slow:
+        name = "fake"; vendor = "local"; exports_source = False
+        roles = {"primary_review"}; broker = None
+        def available(self): return True
+        def review(self, diff, context, findings_so_far):
+            gate.wait(2)                                 # hold the thread open
+            return [Finding(id="m-0", title="v", severity=Severity.HIGH,
+                            source="model:fake", file=diff.files[0].path, line=1)]
+    import cosmo.providers.registry as reg
+    monkeypatch.setattr(reg, "resolve_primary", lambda *a, **k: (_Slow(), []))
+    dispatch(s, "/audit")                                # starts, thread blocks on gate
+    second = dispatch(s, "/audit")                       # should be refused
+    gate.set()
+    s.audit_thread.join(timeout=5)
+    assert "already running" in second
+
+
+def test_audit_refuses_when_provider_unavailable(tmp_path, monkeypatch):
+    (tmp_path / "a.py").write_text("x=1\n")
+    s = Session(config=Config(data={}), target=str(tmp_path))
+    import cosmo.providers.registry as reg
+
+    class _Down(_fake_provider().__class__):
+        def available(self):
+            return False
+    monkeypatch.setattr(reg, "resolve_primary", lambda *a, **k: (_Down(), []))
+    out = dispatch(s, "/audit")
+    assert "cannot audit" in out and "claude-cli" in out
+    assert s.findings == []          # nothing ran
+
+
+def test_audit_listed_in_help(tmp_path):
+    assert "/audit" in dispatch(_session(tmp_path), "/help")
