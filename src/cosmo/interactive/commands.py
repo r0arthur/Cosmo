@@ -177,13 +177,20 @@ def _cmd_extensions(session: Session, args) -> str:
 
 def _cmd_status(session: Session, args) -> str:
     """— session snapshot: findings, running campaigns, threshold, model"""
-    counts = Report(session.target, session.findings).counts
+    counts = Report(session.target, session.snapshot_findings()).counts
     csum = ", ".join(f"{k}:{v}" for k, v in sorted(counts.items())) or "none"
     camps = ", ".join(f"{n} ({s}s left)" for n, s in session.running_campaigns.items()) or "none"
     model = session.session_model or "claude (default)"
+    if session.audit_running():
+        audit = f"running ({session.audit_done}/{session.audit_total} files)"
+    elif session.audit_total:
+        audit = (f"done ({session.audit_done}/{session.audit_total} reviewed"
+                 + (f", {session.audit_skipped} skipped" if session.audit_skipped else "") + ")")
+    else:
+        audit = "none"
     return (f"target: {session.target}\nfindings: {csum}\n"
             f"threshold: {session.effective_threshold()}\nmodel: {model}\n"
-            f"campaigns: {camps}")
+            f"audit: {audit}\ncampaigns: {camps}")
 
 
 def _cmd_scope(session: Session, args) -> str:
@@ -243,10 +250,75 @@ def _cmd_disclose(session: Session, args) -> str:
             f"(embargo drafted; nothing sent — needs explicit human approval to deliver)")
 
 
+def _cmd_audit(session: Session, args) -> str:
+    """[wait] — AI-audit every file in the background; keep using the session as it runs"""
+    import threading
+
+    from ..audit import audit_call_budget, run_llm_audit
+    from ..diff import resolve_diff
+    from ..providers.registry import resolve_primary
+
+    if session.audit_running():
+        return (f"an audit is already running ({session.audit_done}/{session.audit_total} "
+                f"files done). /status to watch.")
+
+    provider, warns = resolve_primary(session.config, session_model=session.session_model)
+    session.notes.extend(warns)
+    if not provider.available():
+        return (f"cannot audit: provider {provider.name!r} is unavailable. "
+                f"Set a key, or `/model claude-cli` to use the Claude Code subscription.")
+    # Same broker wiring as the engine (§8 + §9a); a provider that doesn't take
+    # one (e.g. the CLI provider) is left as-is.
+    if getattr(provider, "broker", None) is None:
+        from ..providers.egress import provider_broker_from_config
+        try:
+            provider.broker = provider_broker_from_config(session.config)
+        except AttributeError:
+            pass
+
+    diff = resolve_diff(session.target)
+    if not diff.files:
+        return "nothing to audit — no files resolved for this target."
+
+    budget = audit_call_budget(session.config)
+    session.audit_total = min(len(diff.files), budget)
+    session.audit_done = 0
+    session.audit_skipped = 0
+    baseline = session.snapshot_findings()
+
+    def _on_result(path, found):
+        # Runs on the audit thread as each file completes: merge live so /status
+        # and /report reflect partial progress, and advance the counter.
+        session.merge_findings(found)
+        session.audit_done += 1
+
+    def _worker():
+        notes: list[str] = []
+        skipped: list[str] = []
+        try:
+            run_llm_audit(diff, provider, "", baseline, session.config,
+                          notes, skipped, progress=session.emit, on_result=_on_result)
+        finally:
+            session.audit_skipped = len(skipped)
+            session.notes.extend(notes)
+            session.emit(f"/audit done: {session.audit_done}/{session.audit_total} reviewed"
+                         + (f", {len(skipped)} skipped" if skipped else "")
+                         + ". /status or /report to review.")
+
+    t = threading.Thread(target=_worker, name="cosmo-audit", daemon=True)
+    session.audit_thread = t
+    t.start()
+    if args and args[0] == "wait":
+        t.join()
+        return ""     # the worker already emitted its completion line
+    return (f"/audit started in the background: {session.audit_total} file(s) via "
+            f"{provider.name}. Keep typing — /status shows progress, findings stream in.")
+
+
 def _cmd_report(session: Session, args) -> str:
     """[format] — export findings as cli|sarif|pr (pr goes through the gate)"""
     fmt = (args[0] if args else "cli").lower()
-    report = Report(session.target, session.findings)
+    report = Report(session.target, session.snapshot_findings())
     if fmt == "sarif":
         return render_sarif(report)
     if fmt in ("pr", "issue", "md", "markdown"):
@@ -271,5 +343,6 @@ _COMMANDS = {
     "baseline": _cmd_baseline,
     "scope": _cmd_scope,
     "disclose": _cmd_disclose,
+    "audit": _cmd_audit,
     "report": _cmd_report,
 }
