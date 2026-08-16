@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
+from typing import Callable
 
 from ..diff import Diff
 from ..findings import Finding
@@ -35,16 +37,24 @@ class ClaudeCLIProvider:
     exports_source = True   # the diff still goes to Anthropic, via the CLI/subscription
     roles = {PRIMARY_REVIEW, CROSS_CHECK}
 
-    def __init__(self, model: str | None = None, *, timeout: int = 300, broker=None):
+    def __init__(self, model: str | None = None, *, timeout: int = 300, broker=None,
+                 retries: int = 2, backoff: float = 2.0,
+                 sleep: Callable[[float], None] = time.sleep):
         self.model = model            # None → the CLI's configured default model
         self.timeout = timeout
         self.broker = broker          # accepted for parity; see module docstring
+        # Firing several `claude -p` sessions back-to-back (e.g. a whole-project
+        # audit) can transiently fail — rate/resource contention, exit 1, empty
+        # stderr — even though the same call succeeds in isolation. Retry with
+        # exponential backoff so a transient blip doesn't lose a file.
+        self.retries = retries
+        self.backoff = backoff
+        self._sleep = sleep
 
     def available(self) -> bool:
         return shutil.which(_BIN) is not None
 
-    def _run_cli(self, prompt: str) -> str:
-        # Prompt goes on stdin (not argv) so a large diff can't hit ARG_MAX.
+    def _invoke(self, prompt: str) -> str:
         cmd = [_BIN, "-p", "--output-format", "text"]
         if self.model:
             cmd += ["--model", self.model]
@@ -56,6 +66,18 @@ class ClaudeCLIProvider:
                 f"claude CLI exited {proc.returncode}: {proc.stderr.strip()[:300]}"
             )
         return proc.stdout
+
+    def _run_cli(self, prompt: str) -> str:
+        # Prompt goes on stdin (not argv) so a large diff can't hit ARG_MAX.
+        last: Exception | None = None
+        for attempt in range(self.retries + 1):
+            try:
+                return self._invoke(prompt)
+            except (RuntimeError, subprocess.TimeoutExpired) as exc:
+                last = exc
+                if attempt < self.retries:
+                    self._sleep(self.backoff * (2 ** attempt))  # 2s, 4s, …
+        raise RuntimeError(f"claude CLI failed after {self.retries + 1} attempts: {last}")
 
     def review(self, diff: Diff, context: str, findings_so_far: list[Finding]) -> list[Finding]:
         # The CLI has no separate system-prompt channel here, so the review
