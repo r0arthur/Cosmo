@@ -10,6 +10,7 @@ loosen a safety-tier setting.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 
 from ..config import Config
@@ -33,6 +34,46 @@ class Session:
     # Injected so the REPL stays hermetic in tests; defaults to the real engine.
     scanner=None
     confirmer=None
+    # Live output sink (set by the REPL) so a long command like /audit can stream
+    # progress as it runs instead of returning one blob at the end.
+    writer=None
+    # Background-audit state (a /audit runs on its own thread so the REPL stays
+    # responsive). The lock guards `findings` because that thread mutates it while
+    # the main thread reads it for /status, /report, etc.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    audit_thread=None            # threading.Thread | None — the running audit, if any
+    audit_total: int = 0         # files this audit will review
+    audit_done: int = 0          # files completed so far
+    audit_skipped: int = 0       # files that errored
+
+    def emit(self, msg: str) -> None:
+        """Stream a line to the session output now, if a writer is attached."""
+        if self.writer is not None:
+            self.writer(msg)
+
+    def audit_running(self) -> bool:
+        return self.audit_thread is not None and self.audit_thread.is_alive()
+
+    def snapshot_findings(self) -> list[Finding]:
+        """A stable copy of findings, safe to read while a background audit writes."""
+        with self._lock:
+            return list(self.findings)
+
+    def merge_findings(self, new: list[Finding]) -> int:
+        """Fold newly-found findings into session state, deduped by location+title
+        (per-file audit reviews restart their ids, so id alone would collide).
+        Thread-safe: the background audit merges each file's results as they land.
+        Returns how many were actually added."""
+        with self._lock:
+            seen = {(f.file, f.line, f.category or f.title) for f in self.findings}
+            added = 0
+            for f in new:
+                key = (f.file, f.line, f.category or f.title)
+                if key not in seen:
+                    self.findings.append(f)
+                    seen.add(key)
+                    added += 1
+            return added
 
     def loaded_extensions(self):
         """Operator-enabled extensions for this session, activated on first use.

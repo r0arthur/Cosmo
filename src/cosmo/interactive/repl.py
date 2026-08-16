@@ -27,6 +27,7 @@ def run_repl(
 ) -> Session:
     config = load_config(target if _is_local(target) else ".", operator_config=operator_config)
     session = Session(config=config, target=target)
+    session.writer = write   # so /audit can stream progress live as it runs
     write(_BANNER)
     if autoscan:
         report = session.scan()
