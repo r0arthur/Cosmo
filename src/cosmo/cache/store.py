@@ -40,8 +40,16 @@ class Cache:
         if self.enabled:
             self.data[key] = value
 
-    def save(self) -> None:
+    def save(self) -> bool:
+        """Persist the cache. Best-effort: the cache is a performance optimization,
+        so an unwritable target (read-only mount, missing dir, no permission) must
+        never crash the review — it just means no incremental speedup next time.
+        Returns True if written, False if skipped/failed."""
         if not self.enabled:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.data, indent=2))
+            return False
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(json.dumps(self.data, indent=2))
+            return True
+        except OSError:
+            return False
