@@ -61,10 +61,18 @@ def test_finding_roundtrip_preserves_fields():
 def test_cache_roundtrip_persists(tmp_path):
     c = Cache.load(str(tmp_path))
     c.set("k", [{"a": 1}])
-    c.save()
+    assert c.save() is True
     reloaded = Cache.load(str(tmp_path))
     assert reloaded.get("k") == [{"a": 1}]
     assert reloaded.get("missing") is None
+
+
+def test_save_is_best_effort_on_unwritable_target():
+    # An unwritable/nonexistent target must not crash the review (regression: a
+    # bogus path like an unset $VAR expanding to '/wp-includes' raised PermissionError).
+    c = Cache.load("/nonexistent-root-xyz/deep/path")
+    c.set("k", [1])
+    assert c.save() is False        # skipped, no exception raised
 
 
 def test_disabled_cache_never_hits(tmp_path):
