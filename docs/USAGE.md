@@ -7,30 +7,101 @@ config, [`../cosmo.example.yaml`](../cosmo.example.yaml).
 
 ---
 
+## Quickstart (60 seconds)
+
+```bash
+# 1. install into a virtualenv (with semgrep for the static stage)
+python -m venv ~/cosmo-venv
+~/cosmo-venv/bin/pip install -e /path/to/cosmo semgrep
+
+# 2. put cosmo on your PATH
+ln -s ~/cosmo-venv/bin/cosmo ~/.local/bin/cosmo     # ~/.local/bin is usually on PATH
+
+# 3. review something
+cosmo review .                          # your local uncommitted changes
+cosmo review owner/repo#123             # a GitHub PR, online (needs the gh CLI)
+```
+
+That's it. No API key required for the static scan. To turn on the AI review, see
+**[Turn on the AI review](#turn-on-the-ai-review)** below.
+
+---
+
 ## 1. Install
 
+Use a virtualenv so cosmo and `semgrep` live together and stay on the same PATH:
+
 ```bash
-pip install -e .            # core (PyYAML only)
-pip install -e '.[claude]'  # + Anthropic SDK, for the live LLM review stage
-pip install -e '.[dev]'     # + pytest, for running the test suite
+python -m venv ~/cosmo-venv
+~/cosmo-venv/bin/pip install -e /path/to/cosmo semgrep   # cosmo + the static scanner
+ln -s ~/cosmo-venv/bin/cosmo ~/.local/bin/cosmo          # so plain `cosmo` works
 ```
 
-Optional runtime pieces, each degrades gracefully if absent:
+Everything else is **optional** — cosmo degrades gracefully, never fails, if a
+piece is missing (it just lists that stage under `skipped:`):
 
-| Piece | Needed for | If missing |
+| Add this | To enable | If missing |
 |---|---|---|
-| `ANTHROPIC_API_KEY` (or another provider key) | the LLM review stage | stage is **skipped**, not failed |
-| `semgrep`, `gitleaks` | the static pre-filter | that tool is listed under `skipped:` |
-| `gh` CLI (authenticated) | reviewing a GitHub PR, reading issues | local-path review still works |
+| `semgrep` (installed above) | the static pre-filter | that stage is `skipped:` |
+| the AI review (below) | LLM findings | LLM stage is `skipped:` |
+| `gh` CLI, authenticated | reviewing a GitHub PR online | local review still works |
+| `gitleaks` on PATH | secret detection | that stage is `skipped:` |
 
-Verify the install:
+> **PATH matters.** cosmo finds `semgrep`, `claude`, and `gh` on your `PATH`. If
+> you run cosmo from a minimal shell that drops `~/.local/bin` or the venv's
+> `bin`, those stages silently show as `skipped:`. Keep both on PATH:
+> `export PATH="$HOME/.local/bin:$HOME/cosmo-venv/bin:$PATH"`.
+
+Verify: `cosmo --help`.
+
+---
+
+## Turn on the AI review
+
+The static scan runs with no account. To add the LLM review, pick **one**:
+
+**A. Use your Claude Code subscription — no API key** (recommended). If the
+`claude` CLI (Claude Code) is installed and logged in:
 
 ```bash
-cosmo --help                # or: python -m cosmo --help
+cosmo review . --model claude-cli
 ```
 
-> Every command below is also runnable as `python -m cosmo <cmd>` if the `cosmo`
-> entry point isn't on your `PATH`.
+cosmo shells out to `claude` on your subscription — no separate API billing.
+
+**B. Use an Anthropic API key.** Get one from console.anthropic.com (billed
+separately from any Claude subscription), then:
+
+```bash
+~/cosmo-venv/bin/pip install anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+cosmo review .                          # the built-in `claude` provider is the default
+```
+
+Either way, a `sensitive`-marked repo still won't send its source to a third
+party unless the operator explicitly allows it (the §8 data-governance gate).
+
+---
+
+## Online vs. local — what cosmo can review
+
+This trips people up, so it's worth being explicit:
+
+| You want to review | Needs a clone? | Command |
+|---|---|---|
+| A GitHub **pull request** | ❌ **No — runs online** via `gh` | `cosmo review owner/repo#123` |
+| Your **local changes** | already local | `cosmo review .` |
+| A **whole repo/app** | ✅ **Yes — files must be local** | `git clone … && rm -rf .git`, then `cosmo review ./dir` |
+
+There is **no** "scan a whole remote repo from its URL" mode — a bare repo URL
+like `github.com/org/app` is not a PR, so cosmo can't fetch it online. Clone it,
+delete `.git` (that switches cosmo into whole-tree mode: every file is treated as
+new), then point cosmo at the folder.
+
+> **Don't add `--model claude-cli` (or any LLM) to a *large* whole-tree scan.**
+> The LLM review sends the whole target as one prompt; an entire large codebase
+> overflows it. Use the LLM on a **PR, your local diff, or a single file** — and
+> plain `cosmo review ./big-repo` (static only) for a whole app.
 
 ---
 
@@ -39,19 +110,20 @@ cosmo --help                # or: python -m cosmo --help
 `cosmo review` runs the pipeline once and prints the result.
 
 ```bash
-cosmo review .                       # review the local working-tree diff
-cosmo review owner/repo#123          # review a GitHub PR (needs gh)
-cosmo review https://github.com/owner/repo/pull/123
+cosmo review .                       # your local working-tree changes
+cosmo review owner/repo#123          # a GitHub PR, online (needs gh)
+cosmo review ./some-folder           # a whole local folder (whole-tree if non-git)
 ```
 
 Useful flags:
 
 ```bash
+cosmo review . --model claude-cli    # add the AI review on your subscription
+cosmo review ./app --audit --model claude-cli   # AI-audit EVERY file (whole project)
 cosmo review . --threshold high      # only surface high+ (overrides config)
 cosmo review . --format sarif        # SARIF for a CI Security tab
 cosmo review . --format pr           # preview the GATED public comment
 cosmo review . --no-cache            # force a full re-scan (ignore the cache)
-cosmo review . --no-color            # plain output for logs
 cosmo review . --record              # also store findings for trend tracking
 cosmo review . --operator-config op.yaml   # apply the operator/org ceiling
 ```
@@ -62,6 +134,29 @@ so `cosmo review` drops straight into a CI gate.
 `--format pr` is worth knowing: it shows exactly what would be posted publicly.
 Confirmed/sensitive findings and their PoCs are **withheld by default** (RISK-05);
 the full detail stays in the CLI/SARIF output for the operator.
+
+### Whole-project AI audit (`--audit`)
+
+By default the LLM review sends the target as one prompt (good for a diff or a
+small target). `--audit` instead reviews the project **file by file**, so a whole
+codebase gets AI coverage — not just the changed lines:
+
+```bash
+cosmo review ./app --audit --model claude-cli
+```
+
+A **hard call budget** protects you from firing thousands of LLM calls by
+accident: `llm_audit.max_files` (default **50**) caps how many files one audit
+sends to the model. It's an operator-tier setting — a scanned repo may only
+*lower* it. Files past the budget are **reported as un-audited**, never silently
+skipped, so you always know your coverage. Raise it in the operator config to
+cover a bigger project:
+
+```yaml
+# operator-config.yaml
+llm_audit:
+  max_files: 200
+```
 
 ---
 
@@ -139,7 +234,7 @@ In-session commands (each delegates to the *same* guarded code path as batch mod
 ```
 /status            findings so far, current settings
 /threshold high    move the session severity floor (preference only)
-/model deepseek    switch reviewer — subject to the §8 data-governance gate
+/model claude-cli  switch reviewer (claude-cli = your subscription) — §8 gated
 /skills            show injected skills
 /waive <fp>        waive a finding      /baseline   list waived
 /scope ...         declare an authorized external-target scope (§9)
@@ -258,6 +353,7 @@ PYTHONPATH=src python -m cosmo plugin check --root .   # plugin-drift gate
 | Command | Does |
 |---|---|
 | `cosmo review <target>` | one-shot review (local path or PR) |
+| `cosmo review <t> --model claude-cli` | + AI review on your Claude subscription |
 | `cosmo waive / baseline` | manage waived findings |
 | `cosmo hook` / `install-hook` | git pre-commit/pre-push review |
 | `cosmo action <pr>` | CI PR review + gated comment + SARIF |
