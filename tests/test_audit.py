@@ -73,6 +73,16 @@ def test_unaudited_remainder_is_reported_not_dropped():
     assert "reviewed 2/5" in joined
     assert "3 file(s) NOT audited" in joined
 
+def test_progress_is_reported_per_file():
+    lines = []
+    cfg = Config(data={"llm_audit": {"max_files": 50}})
+    run_llm_audit(_diff(3), _CountingProvider(), "", [], cfg, [], [],
+                  progress=lines.append)
+    joined = "\n".join(lines)
+    assert "[1/3] f0.py" in joined
+    assert "[2/3] f1.py" in joined
+    assert "[3/3] f2.py" in joined       # each file announced before its review
+
 def test_under_budget_reviews_all():
     cfg = Config(data={"llm_audit": {"max_files": 50}})
     p = _CountingProvider()
