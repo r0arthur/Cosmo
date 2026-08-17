@@ -120,6 +120,7 @@ Useful flags:
 ```bash
 cosmo review . --model claude-cli    # add the AI review on your subscription
 cosmo review ./app --audit --model claude-cli   # AI-audit EVERY file (whole project)
+cosmo review . --audit --verbose     # stream per-file progress as the audit runs
 cosmo review . --threshold high      # only surface high+ (overrides config)
 cosmo review . --format sarif        # SARIF for a CI Security tab
 cosmo review . --format pr           # preview the GATED public comment
@@ -157,6 +158,12 @@ cover a bigger project:
 llm_audit:
   max_files: 200
 ```
+
+A whole-project audit fires many back-to-back `claude` sessions, and a single one
+can transiently fail (exit 1, empty error). cosmo **retries with exponential
+backoff** per file, and a file that still fails after its retries is isolated —
+recorded under `skipped:`, never aborting the rest of the run. Add `--verbose`
+(or `-v`) to watch each file being reviewed live instead of waiting for the end.
 
 ---
 
@@ -235,6 +242,8 @@ In-session commands (each delegates to the *same* guarded code path as batch mod
 /status            findings so far, current settings
 /threshold high    move the session severity floor (preference only)
 /model claude-cli  switch reviewer (claude-cli = your subscription) — §8 gated
+/audit             AI-audit every file in the background (whole project)
+/audit wait        ...and block until it finishes instead of returning at once
 /skills            show injected skills
 /waive <fp>        waive a finding      /baseline   list waived
 /scope ...         declare an authorized external-target scope (§9)
@@ -244,6 +253,13 @@ In-session commands (each delegates to the *same* guarded code path as batch mod
 /report [pr]       render output (pr = through the fail-closed gate)
 /help              full list
 ```
+
+`/audit` runs on a **background thread**, so the prompt stays responsive while a
+slow multi-file audit works. Findings merge into session state as each file
+finishes — run `/status` any time to see progress (`audit: running (3/12 files)`)
+and the findings landed so far, or `/report` once it's done. Use `/audit wait`
+when you'd rather block until it completes. It needs an LLM reviewer, so switch
+to one first if the session has none: `/model claude-cli`.
 
 ---
 
