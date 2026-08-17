@@ -20,6 +20,11 @@ LINK="$BINDIR/cosmo"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
     rm -f "$LINK"
+    # Only remove the semgrep symlink if it points into our venv (don't clobber
+    # a semgrep the user installed themselves).
+    if [[ -L "$BINDIR/semgrep" && "$(readlink "$BINDIR/semgrep")" == "$VENV/"* ]]; then
+        rm -f "$BINDIR/semgrep"
+    fi
     rm -rf "$VENV"
     echo "removed $LINK and $VENV"
     exit 0
@@ -44,6 +49,11 @@ fi
 
 mkdir -p "$BINDIR"
 ln -sf "$VENV/bin/cosmo" "$LINK"
+# cosmo finds semgrep via PATH, but it lives in the venv's bin (not on PATH).
+# Symlink it next to cosmo so the static stage actually runs, not `skipped:`.
+if [[ -x "$VENV/bin/semgrep" ]]; then
+    ln -sf "$VENV/bin/semgrep" "$BINDIR/semgrep"
+fi
 
 echo
 echo "installed: $("$LINK" --version 2>/dev/null || echo cosmo)"
