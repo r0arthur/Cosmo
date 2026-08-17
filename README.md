@@ -293,9 +293,9 @@ past the enforced command layer. **231 tests pass.**
 ## Install & run
 
 ```bash
-python -m venv ~/cosmo-venv
-~/cosmo-venv/bin/pip install -e . semgrep     # cosmo + the static scanner
-ln -s ~/cosmo-venv/bin/cosmo ~/.local/bin/cosmo
+make install            # venv + semgrep + a `cosmo` on your PATH (one command)
+# or a system package:  make deb && sudo dpkg -i dist/cosmo_*.deb
+# or by hand:           python -m venv ~/cosmo-venv && ~/cosmo-venv/bin/pip install -e . semgrep
 
 cosmo review .                         # local working-tree diff (static only)
 cosmo review owner/repo#123            # a GitHub PR, online (needs the gh CLI)

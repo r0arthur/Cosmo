@@ -10,17 +10,16 @@ config, [`../cosmo.example.yaml`](../cosmo.example.yaml).
 ## Quickstart (60 seconds)
 
 ```bash
-# 1. install into a virtualenv (with semgrep for the static stage)
-python -m venv ~/cosmo-venv
-~/cosmo-venv/bin/pip install -e /path/to/cosmo semgrep
+# clone/download cosmo, then from its directory:
+make install          # venv + semgrep + a `cosmo` on your PATH — one command
 
-# 2. put cosmo on your PATH
-ln -s ~/cosmo-venv/bin/cosmo ~/.local/bin/cosmo     # ~/.local/bin is usually on PATH
-
-# 3. review something
 cosmo review .                          # your local uncommitted changes
 cosmo review owner/repo#123             # a GitHub PR, online (needs the gh CLI)
 ```
+
+`make install` is just a wrapper for [`scripts/install.sh`](../scripts/install.sh),
+which you can also run directly (see [Install](#1-install) for options). Prefer a
+system package? `make deb` builds a `.deb` — see [Install as a .deb](#install-as-a-deb).
 
 That's it. No API key required for the static scan. To turn on the AI review, see
 **[Turn on the AI review](#turn-on-the-ai-review)** below.
@@ -29,7 +28,21 @@ That's it. No API key required for the static scan. To turn on the AI review, se
 
 ## 1. Install
 
-Use a virtualenv so cosmo and `semgrep` live together and stay on the same PATH:
+Pick whichever fits — all three give you a `cosmo` on your PATH.
+
+**A. One command (recommended).** From cosmo's directory:
+
+```bash
+make install           # or: ./scripts/install.sh
+```
+
+That creates an isolated venv, installs cosmo + `semgrep` into it, and symlinks
+`cosmo` into `~/.local/bin`. Re-run it to upgrade; `make uninstall` removes it.
+Knobs: `PREFIX=/opt ./scripts/install.sh`, or `NO_SEMGREP=1` to skip the scanner.
+
+**B. As a `.deb`.** See [Install as a .deb](#install-as-a-deb) below.
+
+**C. By hand** (if you'd rather manage the venv yourself):
 
 ```bash
 python -m venv ~/cosmo-venv
@@ -53,6 +66,29 @@ piece is missing (it just lists that stage under `skipped:`):
 > `export PATH="$HOME/.local/bin:$HOME/cosmo-venv/bin:$PATH"`.
 
 Verify: `cosmo --help`.
+
+---
+
+## Install as a `.deb`
+
+Prefer a system package (installs for all users, uninstalls with `apt`/`dpkg`)?
+Build one from the repo — no `fpm` or Debian packaging skills needed:
+
+```bash
+make deb                       # or: ./packaging/build-deb.sh
+sudo dpkg -i dist/cosmo_*.deb  # installs /usr/bin/cosmo
+cosmo --help
+```
+
+The package is **self-contained**: it vendors cosmo and its Python deps under
+`/opt/cosmo/lib` and installs a `/usr/bin/cosmo` launcher that runs them with the
+system `python3` — so the only requirement on the target is `python3 (>= 3.10)`,
+no `pip` step. It's `Architecture: all` (pure Python), so one build installs
+anywhere. `semgrep` (static stage) and the `claude` CLI (AI review) stay optional
+companions you add separately; cosmo degrades gracefully without them.
+
+Remove it with `sudo dpkg -r cosmo`. To share the `.deb`, just hand someone the
+file from `dist/` — `sudo dpkg -i cosmo_<version>_all.deb` is all they run.
 
 ---
 
