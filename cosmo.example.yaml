@@ -12,6 +12,14 @@ ignore_paths:                        # [pref]
   - "vendor/**"
   - "**/*.generated.*"
 
+skills:                              # [pref] — extra review guidance for the LLM stage
+  # Repo skills live in .cosmo/skills/*.md and need no config. They are loaded
+  # but injected as UNTRUSTED reference (RISK-03) — they cannot suppress findings.
+  # org_dir: /etc/cosmo/skills       #   OPERATOR-ONLY: names the TRUSTED, authoritative
+                                     #   skill library. A value here in a scanned repo is
+                                     #   IGNORED + warned — otherwise a repo could promote
+                                     #   its own skills and instruct the reviewer directly.
+
 providers:                           # [pref] — pick your model
   claude: { default: true }
   # codex:    { requires_key: OPENAI_API_KEY }

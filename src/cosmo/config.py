@@ -27,6 +27,19 @@ import yaml
 PREFERENCE_SECTIONS = {
     "threshold", "ignore_paths", "providers", "context_ingestion", "output", "skills",
 }
+# Keys that sit inside a PREFERENCE section but designate TRUST rather than
+# taste, so a scanned repo may not set them.
+#
+# `skills.org_dir` names the directory whose skills are injected as
+# *authoritative* guidance. A repo able to set it could point it at its own
+# `.cosmo/` and promote its skills out of the untrusted section — handing the
+# code under audit a direct channel to instruct the reviewer ("ignore all
+# findings here"). That is exactly the override RISK-03 exists to prevent, so the
+# key is operator-only and the operator's value survives a repo `skills` block.
+OPERATOR_ONLY_PREFERENCE_KEYS: dict[str, set[str]] = {
+    "skills": {"org_dir"},
+}
+
 SAFETY_SECTIONS = {
     "sandbox", "fuzzing", "external_targets", "disclosure", "triggers", "providers_policy",
     # Third-party extensions run in-process, so *enabling* one is a full-trust act
@@ -146,7 +159,21 @@ def _merge(operator: dict, repo: dict) -> tuple[dict, list[str]]:
     # Preference tier: repo overrides operator.
     for key in PREFERENCE_SECTIONS:
         if key in repo:
-            effective[key] = copy.deepcopy(repo[key])
+            value = copy.deepcopy(repo[key])
+            reserved = OPERATOR_ONLY_PREFERENCE_KEYS.get(key, set())
+            if reserved and isinstance(value, dict):
+                op_section = effective.get(key)
+                for rk in sorted(reserved):
+                    if rk in value:
+                        del value[rk]
+                        warnings.append(
+                            f"'{key}.{rk}' from repo ignored (operator-only: it "
+                            f"designates trust, not preference)")
+                    # A repo `skills` block must not erase the operator's org
+                    # library either — replacing the section would drop it.
+                    if isinstance(op_section, dict) and rk in op_section:
+                        value[rk] = op_section[rk]
+            effective[key] = value
     if "threshold" in repo:  # scalar, also a preference
         effective["threshold"] = repo["threshold"]
 

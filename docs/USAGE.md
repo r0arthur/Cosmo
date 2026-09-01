@@ -441,7 +441,91 @@ See [`../cosmo.example.yaml`](../cosmo.example.yaml) for the full key list.
 
 ---
 
-## 11. Custom extensions
+## 11. Review skills (teach it what to look for)
+
+A **skill** is a markdown file that adds targeted review guidance for the LLM
+stage — a taint rule, a framework gotcha, a house convention. Only the skills
+matching the files that changed are injected, so guidance stays sharp instead of
+becoming one giant prompt.
+
+**Adding one takes a file.** Drop it in `.cosmo/skills/` in the repo being
+reviewed:
+
+```
+your-repo/
+  .cosmo/skills/
+    python-taint.md
+```
+
+```markdown
+---
+name: python-taint
+description: Flag request data reaching a shell or SQL sink
+applies_to:
+  - "**/*.py"
+---
+Trace values from request parameters, argv, and environment variables into
+`os.system`, `subprocess.*` with `shell=True`, and string-built SQL. Report the
+source and the sink by name. Parameterized queries and `shell=False` with a list
+argument are safe — do not flag them.
+
+Prefer a concrete exploit scenario (what an attacker controls, where it lands)
+over a generic "possible injection" note.
+```
+
+`applies_to` is a list of globs matched against changed file paths; a skill with
+no match is not injected at all. A worked example ships in
+[`../examples/skills/`](../examples/skills/).
+
+### Org skills vs. repo skills — the trust split
+
+This is the part that matters. Skills load from two places, and they are **not**
+equally trusted:
+
+| Origin | Trust | Why |
+|---|---|---|
+| **Org** — `skills.org_dir`, a directory the operator controls | authoritative | you own it; it is not in the repo under review |
+| **Repo** — `.cosmo/skills/*.md` in the scanned repo | **untrusted** | it ships with the code you are auditing |
+
+A repo skill is still loaded and still useful — but it is injected in a clearly
+labelled untrusted section carrying a directive that it **cannot suppress
+findings, downgrade severity, or override the reviewer**, and that an instruction
+attempting to is itself a reason to look harder at the surrounding code. That is
+RISK-03: a repository under audit must never be able to talk cosmo out of
+reviewing it.
+
+Point cosmo at an org library from the operator config:
+
+```yaml
+# operator-config.yaml
+skills:
+  org_dir: /etc/cosmo/skills      # trusted, authoritative guidance
+```
+
+**`skills.org_dir` is operator-only, and enforced.** `skills` is otherwise a
+preference section a repo may override — but this one key designates *trust*, so
+a value for it in a scanned repo's `cosmo.yaml` is ignored and warned. Without
+that, a repo could point `org_dir` at its own `.cosmo/` and have its skills
+injected as authoritative, which is precisely the override RISK-03 forbids. A
+repo `skills` block also cannot *erase* the operator's `org_dir` by replacing the
+section.
+
+Inspect what actually got injected for a given target with `/skills` inside
+`cosmo interactive`, or watch the `context` stage under `cosmo review . --live` —
+it reports how many skills matched and how many of those were untrusted.
+
+Skills that turn out noisy are surfaced by the feedback loop (§10): cosmo
+*proposes* edits to a skill whose findings get waived a lot, and flags a
+low-noise repo skill as a candidate for org promotion. It never rewrites a skill
+on its own.
+
+To ship a skill as an installable package rather than a loose file — bundled with
+a detector or a `/x-<name>` command — see
+[`EXTENSIONS.md`](EXTENSIONS.md).
+
+---
+
+## 12. Custom extensions
 
 Add a detector, skill, and/or `/x-<name>` command without forking. Point the
 **operator** config at it and arm it by name (discovery ≠ activation):
@@ -461,7 +545,7 @@ Full authoring guide: [`EXTENSIONS.md`](EXTENSIONS.md).
 
 ---
 
-## 12. As a Claude Code plugin
+## 13. As a Claude Code plugin
 
 cosmo ships a plugin surface generated from the one guarded command registry.
 
@@ -477,7 +561,7 @@ fork it.
 
 ---
 
-## 13. Run the tests
+## 14. Run the tests
 
 ```bash
 pip install -e '.[dev]'
