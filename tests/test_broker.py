@@ -3,15 +3,20 @@
 These tests are the point of the whole design: they assert that "no code path to
 an arbitrary external target" actually holds.
 """
+import json
+import threading
+
 import pytest
 
 from cosmo.broker import (
+    Decision,
     DisclosurePolicy,
     EgressBroker,
     EgressDenied,
     Mode,
     Scope,
 )
+from cosmo.broker.log import RequestLog
 
 
 # --- mode gate --------------------------------------------------------------
@@ -107,3 +112,34 @@ def test_every_decision_is_logged():
     assert len(b.log.records) == 2
     assert b.log.records[0].tool == "ffuf" and b.log.records[0].allowed is False
     assert b.log.records[1].tool == "httpx" and b.log.records[1].allowed is True
+
+
+def test_log_survives_concurrent_records(tmp_path):
+    """One broker serves every concurrent model call — a whole-project audit
+    reviews several files at once — so two threads can land in `record`
+    together. Every JSONL line must still be a whole, parseable record.
+    """
+    log = RequestLog(path=tmp_path / "egress.jsonl")
+    # A long reason makes an interleaved write likely if the sink is unguarded.
+    decision = Decision(True, "allowed: " + "x" * 400, Mode.PROVIDER,
+                        "https://api.anthropic.com/v1/messages", "api.anthropic.com")
+    workers, per_worker = 8, 100
+    start = threading.Barrier(workers)
+
+    def _spam():
+        start.wait(timeout=10)
+        for _ in range(per_worker):
+            log.record(decision, "model:claude")
+
+    threads = [threading.Thread(target=_spam) for _ in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+
+    expected = workers * per_worker
+    assert len(log.records) == expected                   # no lost in-memory records
+    lines = (tmp_path / "egress.jsonl").read_text().splitlines()
+    assert len(lines) == expected                         # no lost or split lines
+    for line in lines:
+        json.loads(line)                                  # raises if a write interleaved

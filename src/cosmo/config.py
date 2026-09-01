@@ -35,6 +35,9 @@ SAFETY_SECTIONS = {
     # The whole-project LLM-audit call budget is a cost guard: the operator caps
     # how many files an audit sends to the model; a repo may only lower the cap.
     "llm_audit",
+    # Same guard for a commit-history sweep — one model call per commit makes it
+    # the most expensive thing cosmo can run.
+    "history",
 }
 
 # Data-sensitivity ranked (higher = more restrictive). A repo may only raise it.
@@ -106,6 +109,11 @@ CLAMP_RULES: dict[str, Clamp] = {
     "providers_policy.data_sensitivity": _clamp_sensitivity,
     # A repo may only lower the whole-project audit's per-run file/call budget.
     "llm_audit.max_files": _clamp_min,
+    # ...and only lower how many of those calls are in flight at once. Raising it
+    # is the operator's call: burst rate is what trips a provider's rate limit.
+    "llm_audit.concurrency": _clamp_min,
+    # A repo may only lower how many commits one history sweep reviews.
+    "history.max_commits": _clamp_min,
 }
 
 
@@ -195,8 +203,13 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
     # loads an enabled extension's skills as UNTRUSTED reference (RISK-03).
     "extensions": {"enabled": [], "paths": [], "reference_only": []},
     # Whole-project LLM audit (`cosmo review --audit`): max files sent to the model
-    # in one run. Operator ceiling; a repo may only lower it. See cosmo.audit.
-    "llm_audit": {"max_files": 50},
+    # in one run, and how many of those reviews run at once. Operator ceilings; a
+    # repo may only lower either. See cosmo.audit.
+    "llm_audit": {"max_files": 50, "concurrency": 4},
+    # Commit-history sweep (`cosmo history`): commits reviewed in one run. One
+    # model call per commit, so this is the sharpest cost ceiling cosmo has.
+    # Concurrency is shared with llm_audit — it is the same resource.
+    "history": {"max_commits": 200},
 }
 
 

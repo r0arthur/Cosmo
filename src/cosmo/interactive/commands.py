@@ -287,10 +287,10 @@ def _cmd_audit(session: Session, args) -> str:
     baseline = session.snapshot_findings()
 
     def _on_result(path, found):
-        # Runs on the audit thread as each file completes: merge live so /status
+        # Runs on an audit worker as each file completes: merge live so /status
         # and /report reflect partial progress, and advance the counter.
         session.merge_findings(found)
-        session.audit_done += 1
+        session.advance_audit()
 
     def _worker():
         notes: list[str] = []

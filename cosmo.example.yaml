@@ -26,6 +26,14 @@ providers_policy:                    # [safety] — repo may only RAISE sensitiv
 incremental:                         # [pref] — cache expensive stages between scans
   enabled: true                      #   set false (or --no-cache) to force a full re-scan
 
+llm_audit:                           # [safety] — tighten only
+  max_files: 50                      #   files one whole-project audit sends to the model
+  concurrency: 4                     #   reviews in flight at once; may lower, never raise
+
+history:                             # [safety] — tighten only
+  max_commits: 200                   #   commits one `cosmo history` sweep reviews
+                                     #   (one model call each — the sharpest cost cap)
+
 sandbox:                             # [safety] — tighten only
   network: none                      #   may stay 'none'; cannot open to bridge/host
   timeout_seconds: 120               #   may lower below the operator ceiling; cannot raise
