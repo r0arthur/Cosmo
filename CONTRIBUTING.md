@@ -26,8 +26,8 @@ design-review finding:
 |---|---|---|
 | RISK-01 | A scanned repo can only *tighten* safety config, never loosen it | `config.py` trust tiers |
 | RISK-02 | Every network touch goes through one guarded egress broker | `broker/` |
-| RISK-03 | Untrusted input (README, skills, issues, extensions) can't override the reviewer | `skills/inject.py`, extensions |
-| RISK-04 | `not_reproducible` never auto-waives a finding | sandbox confirmation |
+| RISK-03 | Untrusted input (README, skills, issues, extensions) can't override the reviewer | `skills/inject.py`, extensions, `config.OPERATOR_ONLY_PREFERENCE_KEYS` |
+| RISK-04 | Absence of evidence never auto-waives a finding | sandbox confirmation; history reachability |
 | RISK-05 | The public-comment gate fails **closed** on unknown sensitivity | `output/` gate |
 | RISK-06 | Nothing is disclosed without explicit human approval | `disclose/` |
 | RISK-07 | Waiver fingerprints are content/AST-based, not line-based | `waiver/` |
@@ -42,7 +42,7 @@ without a very good, stated reason will be declined.
 
 ```bash
 git clone git@github.com:r0arthur/Cosmo.git
-cd Cosmo/cosmo
+cd Cosmo
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'          # + '.[claude]' for the live LLM stage
 pytest -q                        # the full suite must pass

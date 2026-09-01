@@ -12,6 +12,22 @@ surface (§17).
 **→ To run it, start with [`docs/USAGE.md`](docs/USAGE.md).** The sections below
 document what each build step delivers and the safety property it carries.
 
+**Beyond the 20-step build**, two capabilities sit on top of the same engine and
+are numbered separately because they are not architecture sections:
+
+- **Commit-history sweep** (`cosmo history`, `cosmo.history`) — review a repo's
+  *past* commit by commit, to find a flaw introduced long ago and never fixed, or
+  one quietly patched without an advisory. Runs over a local clone or straight off
+  the GitHub API with no clone. Every finding names the commit that introduced it
+  and whether the code is **still in HEAD** — three-valued, and "gone" never
+  auto-waives, because a removed line may be a refactor rather than a fix. Bounded
+  by `history.max_commits`, an operator ceiling applied before any call is made.
+- **Live review UI** (`cosmo review --live`, `cosmo.live`) — the pipeline drawn as
+  it runs: objective, stage workflow, the operation in flight, and a coverage
+  panel naming every stage that did *not* run. It renders the structured event
+  stream in `cosmo.events`; `run_review` stays pure, and the UI is stderr-only and
+  dependency-free so `--format sarif` and the `.deb` are both unaffected.
+
 **Step 7 — the egress broker (§9a) — is present** (`cosmo.broker`), built ahead
 of the sandbox/external-target modes that depend on it. It is the single guarded
 network chokepoint: mode gate → scope resolution on the resolved host (redirects

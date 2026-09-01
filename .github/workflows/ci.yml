@@ -5,13 +5,20 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -26,3 +33,84 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  plugin-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Plugin surface is in sync
+        run: make plugin-check
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
+
+      # build-deb.sh reads the version from src/cosmo/__init__.py, so a drift
+      # from pyproject.toml would ship a .deb whose version lies.
+      - name: Version sources agree
+        run: |
+          py=$(python -c 'import tomllib,pathlib; print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])')
+          init=$(python -c 'import re,pathlib; print(re.search(r"__version__\s*=\s*\"([^\"]+)\"", pathlib.Path("src/cosmo/__init__.py").read_text()).group(1))')
+          echo "pyproject.toml=$py  src/cosmo/__init__.py=$init"
+          if [ "$py" != "$init" ]; then
+            echo "::error::version drift: pyproject.toml=$py but src/cosmo/__init__.py=$init"
+            exit 1
+          fi
+
+      - name: Build the .deb
+        run: make deb
+
+      # The launcher runs /usr/bin/python3 against the vendored lib, so this
+      # exercises the packaging claim: system python3 >= 3.10 is the only need.
+      - name: Install the .deb and run it
+        run: |
+          sudo dpkg -i dist/cosmo_*.deb
+          cosmo --help
+
+      - name: Remove cleanly
+        run: sudo dpkg -r cosmo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cosmo-deb
+          path: dist/*.deb
+
+  install-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # NO_SEMGREP keeps the job fast; the static scanner is an optional
+      # companion the script already degrades without.
+      - name: Run the documented installer
+        run: NO_SEMGREP=1 ./scripts/install.sh
+
+      - name: cosmo is on PATH and runs
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          cosmo --help
+
+      - name: Uninstall cleanly
+        run: |
+          ./scripts/install.sh --uninstall
+          test ! -e "$HOME/.local/bin/cosmo"

@@ -43,10 +43,12 @@ class ClaudeCLIProvider:
         self.model = model            # None → the CLI's configured default model
         self.timeout = timeout
         self.broker = broker          # accepted for parity; see module docstring
-        # Firing several `claude -p` sessions back-to-back (e.g. a whole-project
-        # audit) can transiently fail — rate/resource contention, exit 1, empty
-        # stderr — even though the same call succeeds in isolation. Retry with
-        # exponential backoff so a transient blip doesn't lose a file.
+        # Firing several `claude -p` sessions at once (a whole-project audit runs
+        # `llm_audit.concurrency` of them in parallel) can transiently fail —
+        # rate/resource contention, exit 1, empty stderr — even though the same
+        # call succeeds in isolation. Retry with exponential backoff so a
+        # transient blip doesn't lose a file. Each call retries independently:
+        # nothing here is shared between threads.
         self.retries = retries
         self.backoff = backoff
         self._sleep = sleep
