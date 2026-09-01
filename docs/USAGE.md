@@ -155,6 +155,7 @@ Useful flags:
 
 ```bash
 cosmo review . --model claude-cli    # add the AI review on your subscription
+cosmo review . --live                # live UI: objective, stages, what's running now
 cosmo review ./app --audit --model claude-cli   # AI-audit EVERY file (whole project)
 cosmo review . --audit --verbose     # stream per-file progress as the audit runs
 cosmo review . --threshold high      # only surface high+ (overrides config)
@@ -171,6 +172,77 @@ so `cosmo review` drops straight into a CI gate.
 `--format pr` is worth knowing: it shows exactly what would be posted publicly.
 Confirmed/sensitive findings and their PoCs are **withheld by default** (RISK-05);
 the full detail stays in the CLI/SARIF output for the operator.
+
+### Watch it run (`--live`)
+
+`--live` replaces the scrolling log with a live view of the pipeline: the
+objective, the eleven workflow stages as they go pending → running → done (or
+**skipped**), the operation in flight, and a timestamped activity feed of the
+real work — the `semgrep` argv, each model call crossing the egress broker, each
+file a whole-project audit finishes.
+
+```bash
+cosmo review . --live
+cosmo review ./app --audit --model claude-cli --live   # watch the audit fan out
+```
+
+It ends on a verdict: findings by severity, and a **coverage** panel naming every
+stage that did *not* run. That panel is the point — a review that skipped semgrep
+is not the same as a clean one, and the UI never lets that difference hide.
+
+Two things it deliberately does not do: it draws on **stderr**, so
+`--format sarif|pr` still pipes cleanly and the exit code keeps its CI meaning;
+and it adds **no dependency** — the drawing is plain ANSI, so the `.deb` still
+needs nothing but `python3`. Redirect stderr, or pass `--no-color`, and it
+degrades to one durable line per event.
+
+## Sweep a repo's history (`cosmo history`)
+
+`cosmo review` looks at one diff. `cosmo history` looks at *many* — every commit
+in a range becomes its own review unit. That is how you find a flaw introduced
+years ago and never fixed, or one quietly patched without an advisory.
+
+```bash
+cosmo history . --since '6 months ago' --model claude-cli
+cosmo history . --range v1.2.0..HEAD --live
+cosmo history . --author alice --path src/auth --max-commits 50
+cosmo history owner/repo --since 2024-01-01 --live-only   # no clone needed
+```
+
+**No clone required.** A local path is swept with `git`; an `owner/repo`
+reference is read straight off the GitHub API through the `gh` CLI — the same
+access pattern the PR reviewer already uses. A path that exists on disk always
+wins, so a directory that happens to look like `owner/repo` is never silently
+swapped for a repository on the internet. (The API takes ISO dates for
+`--since`/`--until`, not git's relative forms.)
+
+**Every finding says which commit introduced it** — sha, author, date, subject —
+and whether the code is **still in HEAD**:
+
+```
+introduced in 4a1c9de by Alice Chen on 2024-03-11 — add order lookup endpoint
+still in HEAD: present
+```
+
+That last line is the one that matters. A finding in an old commit is only worth
+acting on if the code is still there, so each is checked against HEAD and marked
+`present`, `absent`, or `unknown`. **`absent` never auto-waives anything** — the
+line being gone may be a fix, or may be a rename or a refactor, and cosmo does
+not claim to know which (the same discipline as RISK-04). Use `--live-only` to
+keep just what is still reachable.
+
+A **hard commit budget** applies: `history.max_commits` (default **200**) caps
+how many commits one sweep reviews. It is an operator ceiling a repo may only
+lower — and `--max-commits` may only lower it further, never raise it, so a flag
+cannot buy a bigger model bill. The list is truncated *before* any review is
+dispatched, so concurrency (shared with `llm_audit.concurrency`) changes how fast
+the capped set is worked through, never how many calls are made. Commits past the
+budget are reported as un-reviewed.
+
+Merge commits are skipped by default (their diffs restate work already reviewed
+on the branch); `--include-merges` keeps them. A sweep reviews commit diffs, so
+the tree-level static tools never run — it says so under `skipped:` rather than
+letting a clean sweep imply a clean tree.
 
 ### Whole-project AI audit (`--audit`)
 
@@ -193,13 +265,26 @@ cover a bigger project:
 # operator-config.yaml
 llm_audit:
   max_files: 200
+  concurrency: 8      # per-file reviews in flight at once (default 4)
 ```
 
-A whole-project audit fires many back-to-back `claude` sessions, and a single one
-can transiently fail (exit 1, empty error). cosmo **retries with exponential
+Files are reviewed **several at a time** — `llm_audit.concurrency` (default
+**4**) sets how many. It's the same trust tier as `max_files`: a scanned repo may
+only lower it, since burst rate is what trips a provider's rate limit. It changes
+only how fast the capped set is worked through — the budget is applied *before*
+any review is dispatched, so concurrency can never widen it.
+
+Each file is reviewed independently, so results don't depend on which review
+finishes first: findings always come back in file order, and the same project
+audits to the same report.
+
+A whole-project audit fires many `claude` sessions, and a single one can
+transiently fail (exit 1, empty error). cosmo **retries with exponential
 backoff** per file, and a file that still fails after its retries is isolated —
 recorded under `skipped:`, never aborting the rest of the run. Add `--verbose`
-(or `-v`) to watch each file being reviewed live instead of waiting for the end.
+(or `-v`) to watch files being reviewed live instead of waiting for the end;
+progress is a completion count (`[3/20]`), so lines arrive as reviews land, not
+in file order.
 
 ---
 
@@ -291,7 +376,8 @@ In-session commands (each delegates to the *same* guarded code path as batch mod
 ```
 
 `/audit` runs on a **background thread**, so the prompt stays responsive while a
-slow multi-file audit works. Findings merge into session state as each file
+slow multi-file audit works — and that thread reviews several files at once
+(`llm_audit.concurrency`). Findings merge into session state as each file
 finishes — run `/status` any time to see progress (`audit: running (3/12 files)`)
 and the findings landed so far, or `/report` once it's done. Use `/audit wait`
 when you'd rather block until it completes. It needs an LLM reviewer, so switch
@@ -339,9 +425,10 @@ repo cannot flip on. `--duration` never defaults silently; a run above
 ## 10. Config & trust tiers
 
 `cosmo.yaml` in the scanned repo is **untrusted**. It can override *preference*
-keys (threshold, ignore paths, provider choice) but can only **tighten** *safety*
-keys (`sandbox.*`, `fuzzing.*`, `external_targets.*`, `providers_policy.*`,
-`extensions.*`) — loosening values are clamped and warned at load.
+keys (threshold, ignore paths, provider choice, skills) but can only **tighten**
+*safety* keys — `sandbox.*`, `fuzzing.*`, `external_targets.*`, `disclosure.*`,
+`triggers.*`, `providers_policy.*`, `extensions.*`, `llm_audit.*`, `history.*` —
+and loosening values are clamped and warned at load.
 
 The trusted ceiling is the **operator config**, supplied two ways:
 
@@ -406,6 +493,8 @@ PYTHONPATH=src python -m cosmo plugin check --root .   # plugin-drift gate
 |---|---|
 | `cosmo review <target>` | one-shot review (local path or PR) |
 | `cosmo review <t> --model claude-cli` | + AI review on your Claude subscription |
+| `cosmo review <t> --live` | same review, live workflow UI on stderr |
+| `cosmo history <target>` | sweep commit history (local path or `owner/repo`) |
 | `cosmo waive / baseline` | manage waived findings |
 | `cosmo hook` / `install-hook` | git pre-commit/pre-push review |
 | `cosmo action <pr>` | CI PR review + gated comment + SARIF |
