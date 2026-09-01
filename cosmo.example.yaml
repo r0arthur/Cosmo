@@ -12,6 +12,14 @@ ignore_paths:                        # [pref]
   - "vendor/**"
   - "**/*.generated.*"
 
+skills:                              # [pref] — extra review guidance for the LLM stage
+  # Repo skills live in .cosmo/skills/*.md and need no config. They are loaded
+  # but injected as UNTRUSTED reference (RISK-03) — they cannot suppress findings.
+  # org_dir: /etc/cosmo/skills       #   OPERATOR-ONLY: names the TRUSTED, authoritative
+                                     #   skill library. A value here in a scanned repo is
+                                     #   IGNORED + warned — otherwise a repo could promote
+                                     #   its own skills and instruct the reviewer directly.
+
 providers:                           # [pref] — pick your model
   claude: { default: true }
   # codex:    { requires_key: OPENAI_API_KEY }
@@ -25,6 +33,14 @@ providers_policy:                    # [safety] — repo may only RAISE sensitiv
 
 incremental:                         # [pref] — cache expensive stages between scans
   enabled: true                      #   set false (or --no-cache) to force a full re-scan
+
+llm_audit:                           # [safety] — tighten only
+  max_files: 50                      #   files one whole-project audit sends to the model
+  concurrency: 4                     #   reviews in flight at once; may lower, never raise
+
+history:                             # [safety] — tighten only
+  max_commits: 200                   #   commits one `cosmo history` sweep reviews
+                                     #   (one model call each — the sharpest cost cap)
 
 sandbox:                             # [safety] — tighten only
   network: none                      #   may stay 'none'; cannot open to bridge/host

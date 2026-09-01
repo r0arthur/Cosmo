@@ -4,6 +4,8 @@ The through-line under test: the command layer cannot bypass the guardrails that
 batch mode enforces — fuzz duration cap, data-governance gate, public-comment
 gate — and preference commands only move preferences.
 """
+import threading
+
 from cosmo.config import Config
 from cosmo.findings import ConfirmationStatus, Finding
 from cosmo.interactive import Session, dispatch, run_repl
@@ -209,6 +211,26 @@ def test_audit_runs_in_background_and_merges(tmp_path, monkeypatch):
     assert "[1/2]" in joined and "[2/2]" in joined
     assert len(s.findings) == 2                         # merged live per file
     assert s.audit_done == 2 and not s.audit_running()
+
+def test_advance_audit_loses_no_updates_under_contention(tmp_path):
+    """Every audit worker advances this counter, so it cannot be a bare `+= 1`
+    (read-modify-write from N threads drops updates)."""
+    s = Session(config=Config(data={}), target=str(tmp_path))
+    workers, per_worker = 8, 500
+    start = threading.Barrier(workers)
+
+    def _bump():
+        start.wait(timeout=10)      # all threads hit the increment together
+        for _ in range(per_worker):
+            s.advance_audit()
+
+    threads = [threading.Thread(target=_bump) for _ in range(workers)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+    assert s.audit_done == workers * per_worker
+
 
 def test_audit_wait_blocks_until_done(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_text("import os\n")

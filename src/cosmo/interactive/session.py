@@ -54,6 +54,13 @@ class Session:
     def audit_running(self) -> bool:
         return self.audit_thread is not None and self.audit_thread.is_alive()
 
+    def advance_audit(self) -> None:
+        """Count one audited file. Separate from `merge_findings` because the
+        audit runs several reviews at once — `+= 1` from N workers loses updates.
+        (Its own acquisition, not nested: `_lock` is not reentrant.)"""
+        with self._lock:
+            self.audit_done += 1
+
     def snapshot_findings(self) -> list[Finding]:
         """A stable copy of findings, safe to read while a background audit writes."""
         with self._lock:

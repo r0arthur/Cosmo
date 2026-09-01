@@ -4,6 +4,7 @@ logic lives here, only how a scan is invoked and how results are rendered.
 from __future__ import annotations
 
 import argparse
+import os.path as _osp
 import sys
 
 from .config import load_config
@@ -29,6 +30,10 @@ def main(argv: list[str] | None = None) -> int:
                                "(bounded by llm_audit.max_files), not just the diff")
     p_review.add_argument("--verbose", "-v", action="store_true",
                           help="stream progress to stderr as each stage/file runs")
+    p_review.add_argument("--live", action="store_true",
+                          help="live review UI on stderr: objective, workflow stages, "
+                               "and what the engine is doing right now (stdout stays "
+                               "clean for --format sarif/pr)")
     p_review.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
     p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan (§15)")
@@ -80,6 +85,31 @@ def main(argv: list[str] | None = None) -> int:
     p_agent.add_argument("target", help="local path or GitHub PR to open a session on")
     p_agent.add_argument("--operator-config")
     p_agent.add_argument("--no-scan", action="store_true", help="don't scan on start")
+
+    p_hist = sub.add_parser("history",
+                            help="sweep a repo's commit history for vulnerabilities")
+    p_hist.add_argument("target",
+                        help="local git repo path, or 'owner/repo' to read the "
+                             "history straight off GitHub with no clone (needs gh)")
+    p_hist.add_argument("--since", help="only commits after this date, e.g. '2024-01-01' or '6 months ago'")
+    p_hist.add_argument("--until", help="only commits before this date")
+    p_hist.add_argument("--author", help="only commits by this author (git --author pattern)")
+    p_hist.add_argument("--range", dest="rev_range", metavar="REV..REV",
+                        help="a git revision range, e.g. v1.2.0..HEAD")
+    p_hist.add_argument("--path", action="append", dest="paths", metavar="PATH",
+                        help="limit to commits touching PATH (repeatable)")
+    p_hist.add_argument("--max-commits", type=int,
+                        help="commits to review (clamped by history.max_commits)")
+    p_hist.add_argument("--include-merges", action="store_true",
+                        help="also review merge commits (off: their diffs restate branch work)")
+    p_hist.add_argument("--live-only", action="store_true",
+                        help="only report findings whose code is still present at HEAD")
+    p_hist.add_argument("--model", choices=["claude", "claude-cli", "codex", "deepseek", "llama"])
+    p_hist.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
+    p_hist.add_argument("--format", choices=["cli", "sarif"], default="cli")
+    p_hist.add_argument("--live", action="store_true", help="live UI on stderr")
+    p_hist.add_argument("--no-color", action="store_true")
+    p_hist.add_argument("--operator-config")
 
     p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup (§14/§15)")
     p_trends.add_argument("target", help="local path previously scanned with --record")
@@ -153,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.cmd == "fuzz":
         return _cmd_fuzz(args)
+    if args.cmd == "history":
+        return _cmd_history(args)
     if args.cmd == "trends":
         return _cmd_trends(args)
     if args.cmd == "extensions":
@@ -236,7 +268,6 @@ def _cmd_review(args) -> int:
     # A local target must exist. (A PR ref 'owner/repo#N' or URL is resolved
     # remotely, so skip the path check for those.) Catches e.g. an unset $VAR
     # expanding to a bogus path before we scan the wrong tree.
-    import os.path as _osp
     is_remote = "#" in args.target or args.target.startswith("http")
     if not is_remote and not _osp.exists(args.target):
         print(f"error: target path does not exist: {args.target!r}\n"
@@ -253,20 +284,44 @@ def _cmd_review(args) -> int:
     # path streams per-file progress; always on for --audit (it's slow), and
     # --verbose additionally announces the run.
     progress = None
-    if args.audit or args.verbose:
+    # --live owns stderr; the plain progress stream would corrupt its repaints.
+    if (args.audit or args.verbose) and not args.live:
         def progress(msg: str) -> None:
             print(msg, file=sys.stderr, flush=True)
-    if args.verbose:
+    if args.verbose and not args.live:
         progress(f"cosmo: reviewing {args.target}"
                  + (f" (audit, model={args.model or 'default'})" if args.audit else ""))
 
+    ui = None
+    if args.live:
+        from .live import LiveUI
+        # None = auto-detect (TTY + NO_COLOR); --no-color forces it off. Passing
+        # True here would paint escape codes into a redirected stderr.
+        ui = LiveUI(color=False if args.no_color else None)
+        ui.start()
+
     # --model enters at the CLI tier of the §8 resolution order (outranks the
     # configured default, still gated by data sensitivity).
-    report = run_review(args.target, config, model=args.model, audit=args.audit,
-                        progress=progress)
+    try:
+        report = run_review(args.target, config, model=args.model, audit=args.audit,
+                            progress=progress, events=ui)
+    except BaseException:
+        if ui is not None:
+            ui.finish(None)
+        raise
 
+    # Non-zero exit if any non-waived finding survived the threshold (CI-friendly).
+    exit_code = 1 if any(not f.waived for f in report.findings) else 0
+    if ui is not None:
+        ui.finish(report, exit_code)
+
+    # With --live the verdict screen already showed the findings on stderr, so
+    # repeating the text report on an attached terminal is just noise. A piped
+    # stdout still gets it — the machine-readable contract is unchanged.
+    live_on_tty = bool(ui) and sys.stdout.isatty()
     if args.format == "cli":
-        print(render_cli(report, color=not args.no_color))
+        if not live_on_tty:
+            print(render_cli(report, color=not args.no_color))
     elif args.format == "sarif":
         print(render_sarif(report))
     elif args.format == "pr":
@@ -282,8 +337,135 @@ def _cmd_review(args) -> int:
         finally:
             store.close()
 
-    # Non-zero exit if any non-waived finding survived the threshold (CI-friendly).
-    return 1 if any(not f.waived for f in report.findings) else 0
+    return exit_code
+
+
+def _cmd_history(args) -> int:
+    """Sweep a repo's commit history — local clone or straight off GitHub."""
+    from .engine import _dedupe
+    from .events import HISTORY_STAGES, Emitter
+    from .findings import Report
+    from .history import (
+        HeadStatus,
+        Selection,
+        clamp_requested,
+        resolve_source,
+        run_history_sweep,
+    )
+    from .providers import resolve_primary
+    from .severity import Severity, meets_threshold
+
+    config = load_config(_target_dir(args.target), operator_config=args.operator_config)
+    if args.threshold:
+        config.data["threshold"] = args.threshold
+    if args.max_commits is not None:
+        config.data.setdefault("history", {})["max_commits"] = clamp_requested(
+            config, args.max_commits)
+
+    ui = None
+    if args.live:
+        from .live import LiveUI
+        ui = LiveUI(color=False if args.no_color else None, stages=HISTORY_STAGES)
+        ui.start()
+    ev = Emitter(ui)
+    ev.objective_started(f"Commit-history sweep of {args.target}",
+                         target=args.target, threshold=config.threshold)
+
+    # Resolve the history source first: a bad path should say so, rather than
+    # failing later with an unrelated complaint about the model.
+    try:
+        source = resolve_source(args.target)
+    except Exception as exc:
+        ev.error(str(exc), stage="select")
+        if ui is not None:
+            ui.finish(None, 2)
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    provider, warns = resolve_primary(config, cli_model=args.model)
+    for w in warns:
+        ev.warning(w, stage="select")
+    if getattr(provider, "broker", None) is None:
+        from .providers.egress import provider_broker_from_config
+        try:
+            provider.broker = provider_broker_from_config(config)
+        except AttributeError:
+            pass
+    if not provider.available():
+        msg = (f"model:{provider.name} unavailable — a history sweep is an LLM "
+               f"review, so there is nothing to run. Try --model claude-cli.")
+        ev.error(msg, stage="llm")
+        if ui is not None:
+            ui.finish(None, 2)
+        else:
+            print(f"error: {msg}", file=sys.stderr)
+        return 2
+
+    sel = Selection(since=args.since, until=args.until, author=args.author,
+                    rev_range=args.rev_range, paths=args.paths,
+                    include_merges=args.include_merges)
+    try:
+        sweep = run_history_sweep(args.target, provider, config,
+                                  selection=sel, source=source, events=ev)
+    except Exception as exc:
+        ev.error(str(exc), stage="select")
+        if ui is not None:
+            ui.finish(None, 2)
+        else:
+            print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    findings = sweep.findings
+    if args.live_only:
+        before = len(findings)
+        findings = sweep.live
+        sweep.notes.append(f"history: --live-only kept {len(findings)} of {before} "
+                           f"finding(s) whose code is still in HEAD")
+
+    ev.stage_started("dedupe")
+    before = len(findings)
+    findings = _dedupe(findings)
+    ev.stage_completed("dedupe", f"{before} → {len(findings)} after dedupe")
+
+    ev.stage_started("waiver")
+    baseline = Baseline.load(_target_dir(args.target))
+    # Fingerprints were stamped per commit during the sweep; apply() keeps them
+    # and only marks what the baseline waives.
+    findings = baseline.apply(findings, _empty_diff(args.target))
+    ev.stage_completed("waiver",
+                       f"{sum(1 for f in findings if f.waived)} waived by baseline")
+
+    ev.stage_started("threshold")
+    floor = Severity.parse(config.threshold)
+    findings = [f for f in findings if f.waived or meets_threshold(f.severity, floor)]
+    ev.stage_completed("threshold", f"{len(findings)} at or above {config.threshold}")
+
+    report = Report(target=f"{args.target}@history", findings=findings,
+                    skipped_stages=sweep.skipped, notes=sweep.notes)
+    actionable = [f for f in findings if not f.waived]
+    for f in sorted(actionable, key=lambda f: f.severity, reverse=True):
+        ev.finding(f"{f.severity} {f.title}", detail=f"{f.file}:{f.line}",
+                   severity=str(f.severity), file=f.file, line=f.line)
+    ev.objective_completed(f"Swept {sweep.commits_reviewed} commit(s) — "
+                           f"{len(actionable)} actionable finding(s)")
+
+    exit_code = 1 if actionable else 0
+    if ui is not None:
+        ui.finish(report, exit_code)
+
+    live_on_tty = bool(ui) and sys.stdout.isatty()
+    if args.format == "sarif":
+        print(render_sarif(report))
+    elif not live_on_tty:
+        print(render_cli(report, color=not args.no_color))
+        print(f"\ncommits reviewed: {sweep.commits_reviewed}"
+              + (f" of {sweep.commits_total}+ matched" if sweep.commits_total > sweep.commits_reviewed else "")
+              + f"   source: {sweep.source_kind}")
+        if sweep.by_status:
+            print("still in HEAD: " + ", ".join(
+                f"{n} {s}" for s, n in sorted(sweep.by_status.items())))
+    return exit_code
 
 
 def _cmd_trends(args) -> int:
@@ -323,9 +505,18 @@ def _cmd_trends(args) -> int:
         store.close()
 
 
+def _empty_diff(target: str):
+    """A placeholder diff for a stage that has no single one (history sweeps)."""
+    from .diff import Diff
+    return Diff(source="local", target=str(target), files=[])
+
+
 def _target_dir(target: str) -> str:
-    # For PR targets there's no local dir; config falls back to operator defaults.
-    return "." if "#" in target or target.startswith("http") else target
+    # For PR targets and remote 'owner/repo' history sweeps there is no local
+    # dir; config and baseline fall back to the cwd + operator defaults.
+    if "#" in target or target.startswith("http") or not _osp.exists(target):
+        return "."
+    return target
 
 
 if __name__ == "__main__":  # pragma: no cover

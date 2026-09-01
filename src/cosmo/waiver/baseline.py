@@ -93,9 +93,15 @@ class Baseline:
         self.waived.pop(fp, None)
 
     def apply(self, findings: list[Finding], diff: Diff) -> list[Finding]:
-        """Stamp fingerprints and mark waived findings. Suppression = filter these out."""
+        """Stamp fingerprints and mark waived findings. Suppression = filter these out.
+
+        An already-stamped fingerprint is kept: a history sweep fingerprints each
+        finding against the commit that introduced it, and `diff` here cannot
+        stand in for a hundred different commits.
+        """
         for f in findings:
-            f.fingerprint = fingerprint(f, diff)
+            if f.fingerprint is None:
+                f.fingerprint = fingerprint(f, diff)
             if f.fingerprint in self.waived:
                 f.waived = True
                 f.waived_reason = self.waived[f.fingerprint].get("reason", "")

@@ -27,6 +27,19 @@ import yaml
 PREFERENCE_SECTIONS = {
     "threshold", "ignore_paths", "providers", "context_ingestion", "output", "skills",
 }
+# Keys that sit inside a PREFERENCE section but designate TRUST rather than
+# taste, so a scanned repo may not set them.
+#
+# `skills.org_dir` names the directory whose skills are injected as
+# *authoritative* guidance. A repo able to set it could point it at its own
+# `.cosmo/` and promote its skills out of the untrusted section — handing the
+# code under audit a direct channel to instruct the reviewer ("ignore all
+# findings here"). That is exactly the override RISK-03 exists to prevent, so the
+# key is operator-only and the operator's value survives a repo `skills` block.
+OPERATOR_ONLY_PREFERENCE_KEYS: dict[str, set[str]] = {
+    "skills": {"org_dir"},
+}
+
 SAFETY_SECTIONS = {
     "sandbox", "fuzzing", "external_targets", "disclosure", "triggers", "providers_policy",
     # Third-party extensions run in-process, so *enabling* one is a full-trust act
@@ -35,6 +48,9 @@ SAFETY_SECTIONS = {
     # The whole-project LLM-audit call budget is a cost guard: the operator caps
     # how many files an audit sends to the model; a repo may only lower the cap.
     "llm_audit",
+    # Same guard for a commit-history sweep — one model call per commit makes it
+    # the most expensive thing cosmo can run.
+    "history",
 }
 
 # Data-sensitivity ranked (higher = more restrictive). A repo may only raise it.
@@ -106,6 +122,11 @@ CLAMP_RULES: dict[str, Clamp] = {
     "providers_policy.data_sensitivity": _clamp_sensitivity,
     # A repo may only lower the whole-project audit's per-run file/call budget.
     "llm_audit.max_files": _clamp_min,
+    # ...and only lower how many of those calls are in flight at once. Raising it
+    # is the operator's call: burst rate is what trips a provider's rate limit.
+    "llm_audit.concurrency": _clamp_min,
+    # A repo may only lower how many commits one history sweep reviews.
+    "history.max_commits": _clamp_min,
 }
 
 
@@ -138,7 +159,21 @@ def _merge(operator: dict, repo: dict) -> tuple[dict, list[str]]:
     # Preference tier: repo overrides operator.
     for key in PREFERENCE_SECTIONS:
         if key in repo:
-            effective[key] = copy.deepcopy(repo[key])
+            value = copy.deepcopy(repo[key])
+            reserved = OPERATOR_ONLY_PREFERENCE_KEYS.get(key, set())
+            if reserved and isinstance(value, dict):
+                op_section = effective.get(key)
+                for rk in sorted(reserved):
+                    if rk in value:
+                        del value[rk]
+                        warnings.append(
+                            f"'{key}.{rk}' from repo ignored (operator-only: it "
+                            f"designates trust, not preference)")
+                    # A repo `skills` block must not erase the operator's org
+                    # library either — replacing the section would drop it.
+                    if isinstance(op_section, dict) and rk in op_section:
+                        value[rk] = op_section[rk]
+            effective[key] = value
     if "threshold" in repo:  # scalar, also a preference
         effective["threshold"] = repo["threshold"]
 
@@ -195,8 +230,13 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
     # loads an enabled extension's skills as UNTRUSTED reference (RISK-03).
     "extensions": {"enabled": [], "paths": [], "reference_only": []},
     # Whole-project LLM audit (`cosmo review --audit`): max files sent to the model
-    # in one run. Operator ceiling; a repo may only lower it. See cosmo.audit.
-    "llm_audit": {"max_files": 50},
+    # in one run, and how many of those reviews run at once. Operator ceilings; a
+    # repo may only lower either. See cosmo.audit.
+    "llm_audit": {"max_files": 50, "concurrency": 4},
+    # Commit-history sweep (`cosmo history`): commits reviewed in one run. One
+    # model call per commit, so this is the sharpest cost ceiling cosmo has.
+    # Concurrency is shared with llm_audit — it is the same resource.
+    "history": {"max_commits": 200},
 }
 
 
