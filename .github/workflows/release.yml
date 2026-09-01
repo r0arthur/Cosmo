@@ -1,0 +1,58 @@
+name: Release
+
+# Pushing a v* tag is the deliberate trigger; the tag must match the version in
+# the source, and the suite must pass, before anything is published.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Tag matches the packaged version
+        run: |
+          init=$(python -c 'import re,pathlib; print(re.search(r"__version__\s*=\s*\"([^\"]+)\"", pathlib.Path("src/cosmo/__init__.py").read_text()).group(1))')
+          echo "tag=$GITHUB_REF_NAME  source=$init"
+          if [ "$GITHUB_REF_NAME" != "v$init" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match src/cosmo/__init__.py ($init); expected v$init"
+            exit 1
+          fi
+
+      - name: Install
+        run: python -m pip install --upgrade pip && pip install -e '.[dev]'
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Plugin surface is in sync
+        run: make plugin-check
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y fakeroot
+
+      - name: Build the .deb
+        run: make deb
+
+      - name: Install the .deb and run it
+        run: |
+          sudo dpkg -i dist/cosmo_*.deb
+          cosmo --help
+
+      # Add --draft here if you'd rather review the notes before it goes public.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/cosmo_*.deb \
+            --title "cosmo $GITHUB_REF_NAME" \
+            --generate-notes
