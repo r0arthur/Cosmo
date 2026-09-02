@@ -12,8 +12,10 @@ from ..severity import Severity
 
 # Static-tool messages run to a couple of hundred characters — semgrep's are
 # full paragraphs — so they are trimmed to the terminal here rather than at
-# ingest. The Finding keeps the full text for SARIF; only the display is cut.
-_MAX_WIDTH = 120
+# ingest. The Finding keeps the full text for SARIF and `--report`; only the
+# display is cut. The cap is a bound on a *wide* terminal, not a target: at 120
+# it threw away half a wide window's worth of every message.
+_MAX_WIDTH = 200
 _INDENT = 10
 
 _COLOR = {

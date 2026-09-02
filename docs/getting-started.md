@@ -132,7 +132,20 @@ WORKFLOW   5/11 stages
 ```
 
 It ends on a verdict with a **coverage** panel naming every stage that did not
-run. The UI draws to stderr, so `--format sarif` still pipes cleanly.
+run. The UI draws to stderr, so `--format sarif` still pipes cleanly, and the
+text report follows on stdout once the panel is done.
+
+The panel is a *summary* — the top eight findings, clipped to a column. When you
+have findings to actually work through, ask for the full report:
+
+```bash
+cosmo review . --live --report cosmo-report.md
+```
+
+That writes every field each finding carries — evidence, the rule that fired,
+references, remediation, and the `cosmo waive` command for a false positive —
+untruncated, with the coverage list ahead of the findings. See
+the `--report FILE` section of [usage.md](usage.md).
 
 ---
 
