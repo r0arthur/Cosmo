@@ -23,7 +23,7 @@ finding is disclosed publicly or waived automatically without evidence.
 ```bash
 git clone git@github.com:r0arthur/Cosmo.git
 cd Cosmo
-make install          # venv + semgrep + a `cosmo` on your PATH
+make install          # venv + semgrep + bandit + a `cosmo` on your PATH
 ```
 
 ```bash
@@ -50,7 +50,7 @@ No API key is needed for the static scan. Full options in
 | **[Examples](docs/examples.md)** | End-to-end workflows |
 | **[Architecture](docs/architecture.md)** | Modules, pipeline, and the design decisions behind them |
 | **[FAQ & troubleshooting](docs/faq-troubleshooting.md)** | When something goes wrong |
-| **[Extensions](docs/EXTENSIONS.md)** | Ship a custom detector, skill, or command |
+| **[Extensions](docs/extensions.md)** | Ship a custom detector, skill, or command |
 | **[Contributing](CONTRIBUTING.md)** | Dev setup, conventions, how to submit a PR |
 | **[Build log](docs/build-log.md)** | The 20-step implementation record |
 
@@ -60,8 +60,10 @@ No API key is needed for the static scan. Full options in
 
 - **Reviews diffs, PRs, projects, and history.** `cosmo review` for the present,
   `cosmo history` for the past — including remote repositories with no clone.
-- **Static + AI, in that order.** semgrep and gitleaks run first; their output
-  becomes context for the model rather than work it repeats.
+- **Static + AI, in that order.** Seven scanners run first, in parallel —
+  semgrep, opengrep, gitleaks, trufflehog, bandit, trivy, find-sec-bugs — and
+  their output becomes context for the model rather than work it repeats. Where
+  they overlap, the finding is reported once and says which others agreed.
 - **Model-pluggable, not model-locked.** Claude by default, plus Codex,
   DeepSeek, and a local Llama endpoint. Mark a repo `sensitive` and only local
   providers are eligible — source that must not leave your network never does.
@@ -96,9 +98,9 @@ These are enforced in code, not documented as guidance:
 
 ## Requirements
 
-Python **3.10+** and `PyYAML`. Everything else — `semgrep`, `gitleaks`, a model
-provider, the `gh` CLI — is optional, and cosmo reports what's missing rather
-than failing.
+Python **3.10+** and `PyYAML`. Everything else — the seven static scanners, a
+model provider, the `gh` CLI — is optional, and cosmo names every one that is
+missing rather than quietly scanning less.
 
 **No Claude account is required.** The static scan runs with no account at all,
 and the AI stage takes whichever provider you configure. Claude is the default
@@ -112,12 +114,24 @@ dependency.
 
 Researchers welcome — new detectors, skill packs, bug fixes, and sharpenings of
 the safety model. Extend from the outside with an
-**[extension](docs/EXTENSIONS.md)** (no core changes needed), or contribute to
+**[extension](docs/extensions.md)** (no core changes needed), or contribute to
 the core following **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 Anything touching a safety property needs a test proving the property still
 holds. **Report a guardrail bypass in cosmo itself privately** — see
 [CONTRIBUTING.md](CONTRIBUTING.md#reporting-security-issues-in-cosmo-itself).
+
+## Credits
+
+The scanners do the detecting — cosmo runs them together and keeps track of what
+each one did and didn't cover. **[Semgrep](https://semgrep.dev)**,
+**[Opengrep](https://github.com/opengrep/opengrep)**,
+**[Gitleaks](https://gitleaks.io)**,
+**[TruffleHog](https://trufflesecurity.com)**,
+**[Bandit](https://bandit.readthedocs.io)**, **[Trivy](https://trivy.dev)** and
+**[Find Security Bugs](https://find-sec-bugs.github.io/)** are separate projects
+by other people, run as subprocesses and never vendored. Full attribution, with
+licenses, in **[CREDITS.md](CREDITS.md)**.
 
 ## License
 

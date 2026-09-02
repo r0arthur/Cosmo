@@ -10,9 +10,15 @@
 #
 # The launcher calls `python3 -m cosmo`, so nothing depends on a hardcoded venv
 # path — the package works whatever Python 3.10+ the target ships, and PyYAML's
-# optional C extension degrades to pure Python if the ABI differs. semgrep (the
-# static scanner) and the `claude` CLI (the AI review) are companions the user
-# installs separately; cosmo degrades gracefully without them.
+# optional C extension degrades to pure Python if the ABI differs. The static
+# scanners (semgrep, opengrep, gitleaks, trufflehog, bandit, trivy,
+# find-sec-bugs) and the `claude` CLI are companions the user installs
+# separately; cosmo names each missing one under `skipped:` rather than
+# quietly scanning less. Only the two that exist as Debian packages are listed
+# in Suggests — semgrep, opengrep, trufflehog, trivy and find-sec-bugs are
+# upstream binaries with no Debian package, so naming them there would point
+# apt at nothing. None is a Depends: a hard dependency would make cosmo
+# uninstallable rather than degraded, which is the opposite of the contract.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -64,6 +70,7 @@ Priority: optional
 Architecture: $ARCH
 Depends: python3 (>= 3.10)
 Recommends: git
+Suggests: gitleaks, bandit
 Installed-Size: $INSTALLED_KB
 Maintainer: r0arthur <karthur0822@gmail.com>
 Homepage: https://github.com/r0arthur/Cosmo
@@ -78,7 +85,11 @@ Description: Security review and zero-day discovery tool
  .
  The static scan needs no account. For the AI review, install the 'claude' CLI
  (uses your Claude Code subscription) and run: cosmo review . --model claude-cli.
- Install 'semgrep' for the static stage; without it that stage is skipped.
+ .
+ The static stage drives seven scanners if they are on PATH — semgrep, opengrep,
+ gitleaks, trufflehog, bandit, trivy and find-sec-bugs. None is required: each
+ one that is missing is named in the report's skipped list, so a narrower scan
+ never reads as a clean one.
 EOF
 
 # --- build -------------------------------------------------------------------

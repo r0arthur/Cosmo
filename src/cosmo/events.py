@@ -45,7 +45,7 @@ class Kind(str, Enum):
 STAGES: tuple[tuple[str, str], ...] = (
     ("resolve", "Resolve target into a reviewable diff"),
     ("cache", "Load incremental cache"),
-    ("static", "Static pre-filter (semgrep, gitleaks)"),
+    ("static", "Static pre-filter (semgrep, gitleaks, bandit, trivy, …)"),
     ("provider", "Resolve model provider + egress broker"),
     ("context", "Build review context (static + skills)"),
     ("llm", "AI security review"),
