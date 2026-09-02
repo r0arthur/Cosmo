@@ -1,284 +1,268 @@
-"""Static pre-filter (architecture §5, build step 6).
+"""Static pre-filter: which scanners run, and what it means when one doesn't.
 
-Deterministic, cheap, high-confidence first pass that runs BEFORE the LLM stage;
-its output is passed forward as context so the model doesn't re-derive what a
-tool already caught (§5, §15 cost control).
+Deterministic, cheap, high-confidence first pass, before the LLM stage — its
+output is passed forward as context so the model doesn't re-derive what a tool
+already caught.
 
-Each runner is optional: if the tool isn't installed the stage is recorded as
-skipped rather than failing the scan. Dependency auditing (npm audit / pip-audit
-/ osv-scanner) is a documented stub — the interface is here, wired into the same
-Finding shape, ready to fill in.
+Two things this file is responsible for.
+
+**Coverage honesty.** Every tool in `TOOLS` that does not run produces a line in
+`skipped`, whether it is absent, disabled, or broken. A scanner nobody installed
+is not a scanner that found nothing, and the report must never let those look
+alike. This is why the registry is data: a tool added to it is automatically
+accounted for whether or not it is present on the box.
+
+**The trust boundary.** Which scanners run is a *safety* setting, not a taste
+one. A repo able to write `static: {tools: [semgrep]}` into its own `cosmo.yaml`
+could switch off the secret scanner that would have found its credentials. So
+`config.static.tools` is clamped: a repo may add a scanner, never remove one the
+operator enabled. See `config.SAFETY_SECTIONS`.
+
+The runners themselves are in `runners.py`.
 """
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
-from ..findings import ConfirmationStatus, Finding
-from ..severity import Severity
+from ..findings import Finding
+from .runners import (_run_bandit, _run_findsecbugs, _run_gitleaks,
+                      _run_opengrep, _run_semgrep, _run_trivy, _run_trufflehog)
+
+Runner = Callable[..., list[Finding]]
 
 
-def run_static_prefilter(target_dir: str, events=None) -> tuple[list[Finding], list[str]]:
+@dataclass(frozen=True)
+class Tool:
+    """One scanner cosmo knows how to drive."""
+
+    name: str          # config id, and the `static:<name>` prefix in skipped lines
+    binaries: tuple[str, ...]   # accepted executable names, first match wins
+    runner: Runner
+    covers: str        # one line, for the skipped message and `cosmo tools`
+    install: str       # how to get it, so a skip line is actionable
+    # Attribution. cosmo finds almost nothing on its own — it runs other
+    # people's scanners and normalizes what they return. Keeping the credit in
+    # the registry rather than only in CREDITS.md means adding a tool without
+    # naming its authors fails a test instead of quietly shipping.
+    project: str = ""       # the upstream project's name
+    author: str = ""        # who maintains it
+    license: str = ""       # SPDX id, as published by the project
+    homepage: str = ""
+    # Scanners that share a lineage. Two tools finding the same thing is
+    # corroboration only when they are independent — opengrep is a fork of
+    # semgrep and inherits its rules, so their agreement says almost nothing,
+    # while gitleaks and trufflehog agreeing is two separate detector sets.
+    family: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.family:
+            object.__setattr__(self, "family", self.name)
+
+    def resolve(self) -> str | None:
+        """The executable to run, or None if none of its names is on PATH.
+
+        Resolved per scan rather than at import: find-sec-bugs ships a `.sh`
+        wrapper that some installs rename, and freezing the answer when the
+        module loads would report a tool as absent that the operator installed
+        a moment later.
+        """
+        for name in self.binaries:
+            if shutil.which(name):
+                return name
+        return None
+
+
+TOOLS: tuple[Tool, ...] = (
+    Tool("semgrep", ("semgrep",), _run_semgrep,
+         "multi-language taint/pattern rules",
+         "pip install semgrep",
+         project="Semgrep", author="Semgrep, Inc. and contributors",
+         license="LGPL-2.1", homepage="https://semgrep.dev"),
+    Tool("gitleaks", ("gitleaks",), _run_gitleaks,
+         "secrets in the working tree and in git history",
+         "https://github.com/gitleaks/gitleaks/releases",
+         project="Gitleaks", author="Zachary Rice and contributors",
+         license="MIT", homepage="https://gitleaks.io"),
+    Tool("bandit", ("bandit",), _run_bandit,
+         "Python AST security checks",
+         "pip install bandit",
+         project="Bandit", author="PyCQA", license="Apache-2.0",
+         homepage="https://bandit.readthedocs.io"),
+    Tool("trivy", ("trivy",), _run_trivy,
+         "dependency CVEs and IaC misconfiguration",
+         "https://github.com/aquasecurity/trivy/releases",
+         project="Trivy", author="Aqua Security and contributors",
+         license="Apache-2.0", homepage="https://trivy.dev"),
+    Tool("opengrep", ("opengrep",), _run_opengrep,
+         "the semgrep fork's rule set (and the matched source semgrep's OSS "
+         "engine withholds)",
+         "https://github.com/opengrep/opengrep/releases", family="semgrep",
+         project="Opengrep", author="the Opengrep project", license="LGPL-2.1",
+         homepage="https://github.com/opengrep/opengrep"),
+    Tool("trufflehog", ("trufflehog",), _run_trufflehog,
+         "secrets, with an optional live check against the credential's provider",
+         "https://github.com/trufflesecurity/trufflehog/releases",
+         project="TruffleHog", author="Truffle Security Co. and contributors",
+         license="AGPL-3.0", homepage="https://trufflesecurity.com"),
+    Tool("find-sec-bugs", ("findsecbugs", "findsecbugs.sh"), _run_findsecbugs,
+         "Java taint analysis (needs compiled bytecode)",
+         "https://github.com/find-sec-bugs/find-sec-bugs/releases",
+         # A SpotBugs plugin: the analysis engine underneath is SpotBugs
+         # (LGPL-2.1), credited separately in CREDITS.md.
+         project="Find Security Bugs", author="Philippe Arteau and contributors",
+         license="LGPL-3.0", homepage="https://find-sec-bugs.github.io/"),
+)
+
+TOOLS_BY_NAME: dict[str, Tool] = {t.name: t for t in TOOLS}
+
+# The default set. Every tool cosmo can drive is on by default: leaving one off
+# would mean shipping a quieter scan than the tool is capable of, and the ones
+# that are not installed already report themselves as skipped.
+DEFAULT_TOOLS: tuple[str, ...] = tuple(t.name for t in TOOLS)
+
+# Scanners are subprocesses — the work is in another process, so this bounds how
+# many of those run at once, not Python threads doing anything. Four, because
+# semgrep and trivy are each happy to saturate a machine on their own.
+DEFAULT_CONCURRENCY = 4
+
+
+def selected_tools(config=None) -> list[Tool]:
+    """The tools this run will attempt, in registry order.
+
+    Order is fixed by `TOOLS` rather than by config, so two runs with the same
+    set produce findings in the same order regardless of how the list was
+    written or how the threads happened to finish.
+    """
+    if config is None:
+        names = set(DEFAULT_TOOLS)
+    else:
+        requested = config.get("static.tools", None)
+        names = set(DEFAULT_TOOLS) if requested is None else {
+            str(n) for n in requested}
+    return [t for t in TOOLS if t.name in names]
+
+
+def static_ruleset_id(config=None) -> str:
+    """Identifies the active tool set for the incremental cache key.
+
+    Without this, enabling a scanner and re-running would replay the cached
+    findings of the *old* set against unchanged files — presenting a narrower
+    scan as the wider one the operator just asked for.
+    """
+    return "+".join(t.name for t in selected_tools(config)) or "none"
+
+
+def _concurrency(config=None) -> int:
+    if config is None:
+        return DEFAULT_CONCURRENCY
+    try:
+        return max(1, int(config.get("static.concurrency", DEFAULT_CONCURRENCY)))
+    except (TypeError, ValueError):
+        return DEFAULT_CONCURRENCY
+
+
+def _runner_kwargs(tool: Tool, config) -> dict:
+    """Per-tool options the orchestrator has to pass through.
+
+    Only trufflehog has one, and it is deliberately not a generic passthrough:
+    `verify` makes the scanner send candidate credentials to third-party
+    providers, so it is an operator decision with its own key, not something a
+    repo can switch on by writing a config block.
+    """
+    if tool.name != "trufflehog" or config is None:
+        return {}
+    return {"verify": bool(config.get("static.trufflehog_verify", False))}
+
+
+def _run_one(tool: Tool, root: str, ev, config=None) -> tuple[list[Finding], list[str]]:
+    """Run one scanner. Never raises: a broken tool must not sink the scan.
+
+    Returns its findings and its own skipped lines, kept per-tool rather than
+    appended to a shared list — several of these run at once, and a plain
+    `list.append` race would be a silent coverage bug of exactly the kind this
+    stage exists to prevent.
+    """
+    own: list[str] = []
+    try:
+        found = tool.runner(root, ev, own, **_runner_kwargs(tool, config))
+        ev.output(f"{tool.name}: {len(found)} finding(s)", stage="static",
+                  tool=tool.name, findings=len(found))
+        return found, own
+    except subprocess.TimeoutExpired as exc:
+        note = (f"static:{tool.name} timed out after {exc.timeout}s — "
+                f"NOT scanned ({tool.covers})")
+        ev.stage_skipped("static", note)
+        return [], own + [note]
+    except Exception as exc:
+        note = f"static:{tool.name} (error: {exc})"
+        ev.error(f"{tool.name} failed: {exc}", stage="static")
+        return [], own + [note]
+
+
+def run_static_prefilter(target_dir: str, events=None,
+                         config=None) -> tuple[list[Finding], list[str]]:
     """Returns (findings, skipped_stages)."""
     from ..events import Emitter
     ev = events if isinstance(events, Emitter) else Emitter(events)
 
-    findings: list[Finding] = []
-    skipped: list[str] = []
     root = Path(target_dir)
     if root.is_file():
         root = root.parent
 
-    for name, runner in (("semgrep", _run_semgrep), ("gitleaks", _run_gitleaks)):
-        if not shutil.which(name):
-            skipped.append(f"static:{name} (not installed)")
-            ev.stage_skipped("static", f"{name} not installed — that stage is skipped")
-            continue
-        try:
-            # `skipped` lets a runner report a *partial* result — gitleaks can
-            # scan the tree but time out on history, which is neither a clean
-            # pass nor a failed stage.
-            found = runner(str(root), ev, skipped)
-            findings += found
-            ev.output(f"{name}: {len(found)} finding(s)", stage="static",
-                      tool=name, findings=len(found))
-        except Exception as exc:  # a broken tool run shouldn't sink the whole scan
-            skipped.append(f"static:{name} (error: {exc})")
-            ev.error(f"{name} failed: {exc}", stage="static")
+    selected = selected_tools(config)
+    for tool in TOOLS:
+        if tool not in selected:
+            note = (f"static:{tool.name} (not enabled in static.tools) — "
+                    f"{tool.covers} NOT scanned")
+            ev.stage_skipped("static", note)
 
-    # Dependency audit — STUB (§5). Wire npm audit / pip-audit / osv-scanner here,
-    # mapping each advisory to a Finding(source="static", category="CWE-1104", ...).
-    skipped.append("static:dep-audit (stub — not implemented in MVP)")
-    ev.stage_skipped("static", "dep-audit is a documented stub, not implemented")
+    runnable: list[Tool] = []
+    skipped: list[str] = []
+    for tool in selected:
+        if tool.resolve() is None:
+            skipped.append(f"static:{tool.name} (not installed — {tool.covers} "
+                           f"NOT scanned; install: {tool.install})")
+            ev.stage_skipped("static",
+                             f"{tool.name} not installed — {tool.covers} not scanned")
+        else:
+            runnable.append(tool)
+
+    findings: list[Finding] = []
+    if runnable:
+        # `map` preserves input order, so the findings list is the registry
+        # order regardless of which scanner finishes first.
+        with ThreadPoolExecutor(max_workers=min(_concurrency(config), len(runnable)),
+                                thread_name_prefix="cosmo-static") as pool:
+            for found, notes in pool.map(
+                    lambda t: _run_one(t, str(root), ev, config), runnable):
+                findings += found
+                skipped += notes
+
+    # Dependency auditing is trivy's job. Said plainly when trivy did not run,
+    # because "no CVEs reported" and "nothing looked at the dependencies" are
+    # the two readings this stage exists to keep apart.
+    if not any(t.name == "trivy" for t in runnable):
+        skipped.append("static:dep-audit (no dependency scanner ran — "
+                       "install trivy, or enable it in static.tools)")
+        ev.stage_skipped("static", "no dependency scanner ran")
 
     return findings, skipped
 
 
-# The gitleaks history pass walks every commit. That is bounded work on a normal
-# clone, but a *partial* clone (`--filter=blob:none`) has to fetch each blob over
-# the network, so a large repo can run for many minutes. Bound it and report the
-# shortfall rather than letting cosmo appear to hang.
-GITLEAKS_HISTORY_TIMEOUT = 60
+def source_family(source: str) -> str:
+    """Group a finding's `source` for corroboration purposes.
 
-
-def _sh(cmd: list[str], ev=None, timeout: int | None = None) -> str:
-    if ev is not None:
-        ev.execute(cmd, stage="static")
-    # These scanners exit non-zero when they find issues; don't raise on that.
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
-
-
-def _semgrep_remediation(meta: dict, extra: dict) -> str:
-    """Prose guidance if the rule carries it, else semgrep's autofix, labelled.
-
-    `metadata.fix` is human-readable advice, but `extra.fix` is the *replacement
-    text* semgrep would substitute — so the rule for `subprocess(shell=True)`
-    yields the bare string "False". Rendered unlabelled that reads as
-    "fix: False", which is worse than saying nothing.
+    `static:opengrep` and `static:semgrep` collapse to one family; everything
+    else stands alone. Non-static sources are returned unchanged, so a model
+    agreeing with a scanner still counts as independent.
     """
-    prose = meta.get("fix")
-    if isinstance(prose, str) and prose.strip():
-        return prose.strip()
-    autofix = extra.get("fix")
-    if isinstance(autofix, str) and autofix.strip():
-        return f"replace with `{autofix.strip()}`"
-    return ""
-
-
-def _semgrep_evidence(check_id: str, meta: dict) -> str:
-    """Triage material for a semgrep hit.
-
-    Deliberately *not* built from `extra.lines` (the matched source): on the OSS
-    engine that field reads "requires login", so a report built on it would show
-    that string instead of code. What is actually present is the rule that fired,
-    semgrep's own grading of it, the full CWE/OWASP text, and the rule's
-    references — which together are enough to decide whether a hit is real
-    without re-running the scanner.
-    """
-    parts: list[str] = []
-    if check_id:
-        parts.append(f"semgrep rule: {check_id}")
-    grades = [f"{k}={meta[k]}" for k in ("confidence", "impact", "likelihood")
-              if meta.get(k)]
-    if grades:
-        parts.append("semgrep rating: " + "  ".join(grades))
-    for key, label in (("cwe", "CWE"), ("owasp", "OWASP")):
-        val = meta.get(key)
-        items = val if isinstance(val, list) else ([val] if val else [])
-        if items:
-            parts.append(f"{label}: " + "; ".join(str(i) for i in items))
-    refs = [meta.get("shortlink"), meta.get("source-rule-url")]
-    refs += list(meta.get("references") or [])
-    seen: set[str] = set()
-    for ref in refs:
-        if ref and str(ref) not in seen:
-            seen.add(str(ref))
-            parts.append(str(ref))
-        if len(seen) >= 4:
-            break
-    return "\n".join(parts)
-
-
-def _run_semgrep(root: str, ev=None, skipped: list[str] | None = None) -> list[Finding]:
-    out = _sh(["semgrep", "--config", "auto", "--json", "--quiet", root], ev)
-    data = json.loads(out or "{}")
-    findings: list[Finding] = []
-    for i, r in enumerate(data.get("results", [])):
-        extra = r.get("extra", {})
-        meta = extra.get("metadata", {})
-        cwe = meta.get("cwe")
-        cwe = cwe[0] if isinstance(cwe, list) and cwe else cwe
-        findings.append(
-            Finding(
-                id=f"static-semgrep-{i}",
-                title=extra.get("message", r.get("check_id", "semgrep finding"))[:200],
-                severity=Severity.parse(extra.get("severity", "medium")),
-                source="static",
-                file=r.get("path", ""),
-                line=int(r.get("start", {}).get("line", 0) or 0),
-                confidence=0.7,
-                confirmation_status=ConfirmationStatus.UNCONFIRMED,
-                category=str(cwe) if cwe else None,
-                evidence=_semgrep_evidence(r.get("check_id", ""), meta),
-                remediation=_semgrep_remediation(meta, extra),
-                # Semgrep security rules are security-relevant, but "sensitive enough
-                # to withhold publicly" is decided at the gate by severity+status.
-                security_sensitive=False,
-            )
-        )
-    return findings
-
-
-def _redact(secret: str, *, inline: bool = False) -> str:
-    """Enough of a credential to recognise it, never enough to use it.
-
-    A report is a file on disk that gets attached to tickets and pasted into
-    chat. Copying the secret into it verbatim mints a second live copy of the
-    thing the finding says to rotate — but a bare "a secret is here" is not
-    triageable either: the `phc_` prefix on a PostHog key is what tells an
-    operator it is public by design.
-    """
-    s = str(secret or "")
-    if len(s) <= 12:
-        return f"<redacted, {len(s)} chars>"
-    stub = f"{s[:6]}…{s[-4:]}"
-    # Inside a quoted match line the length would land inside the quotes and
-    # read as part of the value, so it is only appended when standing alone.
-    return stub if inline else f"{stub} ({len(s)} chars)"
-
-
-def _gitleaks_evidence(row: dict) -> str:
-    """What the operator needs to judge a leak without re-running gitleaks."""
-    parts = [f"gitleaks rule: {row.get('RuleID', 'unknown')}"]
-    if row.get("Description"):
-        parts.append(str(row["Description"]))
-    secret = str(row.get("Secret") or "")
-    match = " ".join(str(row.get("Match") or "").split())
-    if match:
-        # Keep the surrounding line — the variable name is often the whole
-        # answer — with the credential itself replaced.
-        if secret:
-            match = match.replace(secret, _redact(secret, inline=True))
-        parts.append(f"match: {match[:200]}")
-    elif secret:
-        parts.append(f"secret: {_redact(secret)}")
-    if row.get("Entropy"):
-        parts.append(f"entropy: {row['Entropy']}")
-    commit = str(row.get("Commit") or "")
-    if commit:
-        who = str(row.get("Author") or "").strip()
-        when = str(row.get("Date") or "").strip()
-        where = f"in commit {commit[:12]}"
-        if who:
-            where += f" by {who}"
-        if when:
-            where += f" on {when}"
-        parts.append(f"found {where}")
-    return "\n".join(parts)
-
-
-def _gitleaks_scan(root: str, mode_args: list[str], tag: str, ev=None,
-                   timeout: int | None = None) -> list[dict]:
-    """One gitleaks pass. Returns its raw rows."""
-    report = Path(root) / f".cosmo-gitleaks-{tag}.json"
-    try:
-        _sh(["gitleaks", "detect", "--no-banner", *mode_args, "--report-format",
-             "json", "--report-path", str(report), "--source", root], ev, timeout)
-        if not report.exists():
-            # gitleaks exits 1 when it finds leaks, so the exit code cannot tell
-            # success from failure. A missing report can: gitleaks writes one —
-            # even an empty array — on every completed run. Raising surfaces the
-            # failure under `skipped:` instead of passing an empty result off as
-            # a clean scan.
-            raise RuntimeError(f"gitleaks {tag} scan wrote no report — did not complete")
-        return json.loads(report.read_text()) or []
-    finally:
-        report.unlink(missing_ok=True)
-
-
-def _run_gitleaks(root: str, ev=None, skipped: list[str] | None = None) -> list[Finding]:
-    """Scan the working tree, and git history too when there is any.
-
-    Two passes, because neither alone is sufficient:
-
-    * `--no-git` reads the files as they are on disk. Without it gitleaks walks
-      *commits* and misses a secret sitting uncommitted in the working tree —
-      exactly what the pre-commit hook exists to catch. On a non-git target it
-      found nothing at all and still exited 0, so cosmo reported "no findings"
-      over a plaintext key.
-    * The default git pass still matters for a secret that was committed and
-      later deleted. It is gone from disk but not from history, and it still
-      needs rotating.
-    """
-    rows = _gitleaks_scan(root, ["--no-git"], "tree", ev)
-    if (Path(root) / ".git").exists():
-        try:
-            rows += _gitleaks_scan(root, [], "history", ev,
-                                   timeout=GITLEAKS_HISTORY_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            # The tree results are still good, so this is a partial result, not a
-            # failed stage — report the shortfall and keep what we have. Silently
-            # dropping it would present tree-only coverage as a full scan.
-            note = (f"static:gitleaks history pass timed out after "
-                    f"{GITLEAKS_HISTORY_TIMEOUT}s — working tree scanned, git "
-                    f"history NOT scanned (large repo, or a partial clone "
-                    f"fetching blobs over the network)")
-            if skipped is not None:
-                skipped.append(note)
-            if ev is not None:
-                ev.stage_skipped("static", note)
-
-    # The passes overlap on any secret that is both committed and still on disk.
-    # Keep the richer row: the working-tree pass runs first but reports no
-    # commit, so dropping the later duplicate would throw away the one piece of
-    # provenance that says when the secret entered the repo.
-    merged: dict[tuple, dict] = {}
-    for r in rows:
-        key = (r.get("RuleID"), r.get("File"), r.get("StartLine"))
-        prior = merged.get(key)
-        if prior is None:
-            merged[key] = r
-        elif not prior.get("Commit") and r.get("Commit"):
-            merged[key] = {**r, "File": prior.get("File", r.get("File"))}
-    rows = list(merged.values())
-    findings: list[Finding] = []
-    for i, r in enumerate(rows or []):
-        findings.append(
-            Finding(
-                id=f"static-gitleaks-{i}",
-                title=f"Secret leaked: {r.get('RuleID', 'unknown rule')}",
-                severity=Severity.HIGH,
-                source="static",
-                file=r.get("File", ""),
-                line=int(r.get("StartLine", 0) or 0),
-                confidence=0.9,
-                confirmation_status=ConfirmationStatus.UNCONFIRMED,
-                category="CWE-798",  # use of hard-coded credentials
-                evidence=_gitleaks_evidence(r),
-                remediation="Rotate the exposed secret and remove it from the repo/history.",
-                security_sensitive=True,  # a live secret → gate must withhold public detail
-            )
-        )
-    return findings
+    tool = str(source or "").split(":", 1)
+    if len(tool) == 2 and tool[0] == "static":
+        found = TOOLS_BY_NAME.get(tool[1])
+        return f"static:{found.family}" if found else str(source)
+    return str(source)

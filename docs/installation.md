@@ -22,11 +22,19 @@ a missing tool is reported under `skipped:` in the report:
 
 | Optional | Enables | Without it |
 |---|---|---|
-| `semgrep` | static pre-filter | `static:semgrep (not installed)` |
-| `gitleaks` | secret detection — working tree *and* git history | `static:gitleaks (not installed)` |
+| `semgrep` | multi-language taint/pattern rules | `static:semgrep (not installed …)` |
+| `opengrep` | the semgrep fork's rules, plus the matched source line semgrep's OSS engine withholds | `static:opengrep (not installed …)` |
+| `gitleaks` | secrets — working tree *and* git history | `static:gitleaks (not installed …)` |
+| `trufflehog` | secrets, with an optional live check against the credential's provider | `static:trufflehog (not installed …)` |
+| `bandit` | Python AST security checks | `static:bandit (not installed …)` |
+| `trivy` | dependency CVEs and IaC misconfiguration | `static:dep-audit (no dependency scanner ran)` |
+| `findsecbugs` | Java taint analysis — **needs compiled bytecode** | `static:find-sec-bugs (not installed …)` |
 | `claude` CLI, logged in | AI review on your subscription | LLM stage skipped |
 | `anthropic` SDK + `ANTHROPIC_API_KEY` | AI review via API | LLM stage skipped |
 | `gh` CLI, authenticated | GitHub PR review, remote history sweeps | local review still works |
+
+The scanners are separate projects by other authors; cosmo runs whichever it
+finds on your `PATH` and never bundles them. See [CREDITS.md](../CREDITS.md).
 
 > **cosmo never silently skips a stage.** Anything that did not run is named in
 > the report's `skipped:` list, so a clean result is never confused with an
@@ -52,9 +60,9 @@ That is a thin wrapper for the installer, which you can also call directly:
 
 1. Creates an isolated virtualenv at `~/.local/share/cosmo/venv`
 2. `pip install -e` this repository into it
-3. Installs `semgrep` into the same venv (skippable — see below)
+3. Installs `semgrep` and `bandit` into the same venv (skippable — see below)
 4. Symlinks `~/.local/bin/cosmo` → the venv's `cosmo`
-5. Symlinks `~/.local/bin/semgrep` too, if semgrep installed — otherwise cosmo
+5. Symlinks `~/.local/bin/semgrep` and `~/.local/bin/bandit` too, if they installed — otherwise cosmo
    would not find it on `PATH` and the static stage would show as skipped
 
 **Knobs** (environment variables):
@@ -64,6 +72,7 @@ That is a thin wrapper for the installer, which you can also call directly:
 | `PREFIX` | `$HOME/.local` | Install root; binaries go to `$PREFIX/bin` |
 | `VENV` | `$PREFIX/share/cosmo/venv` | Where the virtualenv lives |
 | `NO_SEMGREP` | unset | Set to any value to skip installing semgrep |
+| `NO_BANDIT` | unset | Set to any value to skip installing bandit |
 
 ```bash
 PREFIX=/opt ./scripts/install.sh          # system-wide-ish location
@@ -78,9 +87,9 @@ NO_SEMGREP=1 ./scripts/install.sh         # skip the static scanner
 make uninstall          # or: ./scripts/install.sh --uninstall
 ```
 
-This removes `~/.local/bin/cosmo` and the venv. The `semgrep` symlink is removed
-**only if it points into cosmo's venv**, so a semgrep you installed yourself is
-never clobbered.
+This removes `~/.local/bin/cosmo` and the venv. The `semgrep` and `bandit`
+symlinks are removed **only if they point into cosmo's venv**, so a copy you
+installed yourself is never clobbered.
 
 ---
 
@@ -132,7 +141,7 @@ If you would rather manage the virtualenv yourself:
 
 ```bash
 python3 -m venv ~/cosmo-venv
-~/cosmo-venv/bin/pip install -e /path/to/cosmo semgrep
+~/cosmo-venv/bin/pip install -e /path/to/cosmo semgrep bandit
 ln -s ~/cosmo-venv/bin/cosmo ~/.local/bin/cosmo
 ```
 
@@ -214,6 +223,7 @@ The installer prints a warning if `$PREFIX/bin` is not already on your `PATH`.
 | `~/.local/share/cosmo/venv` | Method A | The virtualenv (override with `VENV`) |
 | `~/.local/bin/cosmo` | Method A | Launcher symlink (override with `PREFIX`) |
 | `~/.local/bin/semgrep` | Method A | Only if semgrep installed into the venv |
+| `~/.local/bin/bandit` | Method A | Only if bandit installed into the venv |
 | `/opt/cosmo/lib`, `/usr/bin/cosmo` | Method B | Vendored library + launcher |
 | `<target>/.cosmo/cache.json` | first `cosmo review` | Incremental scan cache |
 | `<target>/.cosmo/baseline.json` | first `cosmo waive` | Waived-finding fingerprints |
@@ -332,7 +342,8 @@ git remote set-url origin ssh://git@ssh.github.com:443/<owner>/<repo>.git
 | Symptom | Cause | Fix |
 |---|---|---|
 | `cosmo: command not found` after Method A | `$PREFIX/bin` not on `PATH` | `export PATH="$HOME/.local/bin:$PATH"` |
-| Stages show `static:semgrep (not installed)` | semgrep absent, or in a venv not on `PATH` | Re-run `./scripts/install.sh` without `NO_SEMGREP`, or add the venv's `bin` to `PATH` |
+| Stages show `static:<tool> (not installed …)` | That scanner is absent, or in a venv not on `PATH` | The skip line names the install command or release page; for semgrep, re-run `./scripts/install.sh` without `NO_SEMGREP` |
+| `static:find-sec-bugs (Java source found but no compiled classes …)` | find-sec-bugs analyses bytecode, not source | Build first (`mvn -q compile`), so `target/classes` exists |
 | `model:claude (cosmo's default) unavailable — needs ...` | The selected provider has no credentials here; the line lists what the others need | [Turn on the AI review](#turning-on-the-ai-review), or `--model <name>` |
 | `error: target path does not exist: '...'` | Bad path, or an unset shell variable that expanded to nothing | Check the path; for a PR use `owner/repo#123` |
 | `GitHub target requested but 'gh' CLI is not installed` | PR/remote-history target without `gh` | Install `gh` and `gh auth login` |

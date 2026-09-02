@@ -128,6 +128,33 @@ ignore_paths:
 
 Glob patterns excluded from review. Default: empty.
 
+### `static` — *safety*
+
+```yaml
+static:
+  tools: [semgrep, gitleaks, bandit, trivy, opengrep, trufflehog, find-sec-bugs]
+  concurrency: 4              # scanner subprocesses in flight at once
+  trufflehog_verify: false    # OPERATOR-ONLY — see below
+```
+
+Default: every scanner cosmo can drive. A tool that is not installed reports
+itself under `skipped:` rather than quietly narrowing the scan, so the default
+costs nothing on a machine that has none of them.
+
+This is a **safety** section, and `tools` clamps in the opposite direction to
+every other one here: for a scanner list, tightening means scanning *more*. A
+repo may **add** a tool, never remove one the operator enabled — otherwise a
+scanned repo could write `static: {tools: [semgrep]}` and switch off the secret
+scanner that would have found its own credentials.
+
+`trufflehog_verify` has no tightening rule at all, which makes it operator-only:
+a repo value is ignored and warned. Verification sends candidate credentials to
+their providers to see whether they still work, which is egress the broker never
+sees.
+
+The active tool set is part of the incremental cache key, so enabling a scanner
+re-runs the stage instead of replaying the narrower set's cached results.
+
 ### `providers` — *preference*
 
 ```yaml
@@ -282,7 +309,7 @@ extensions:
 
 Extensions run in-process, so *enabling* one is a full-trust act only the
 operator can make. Discovery is not activation: only names in `enabled` are
-imported and run. See [EXTENSIONS.md](EXTENSIONS.md).
+imported and run. See [extensions.md](extensions.md).
 
 ### `output` and `triggers`
 

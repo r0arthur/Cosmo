@@ -267,7 +267,7 @@ files from code; `cosmo plugin check` reports drift without writing. See
 | 3 | Diff resolver — local `git diff` + GitHub PR via `gh` | real |
 | 4 | Output adapters (CLI / SARIF / PR) + **fail-closed gate** (RISK-05) | real, tested |
 | 5 | Waiver/baseline — **content-based fingerprint** (RISK-07) | real, tested |
-| 6 | Static pre-filter — semgrep, gitleaks (dep-audit stubbed) | real (tools optional) |
+| 6 | Static pre-filter — semgrep, gitleaks (dep-audit stubbed; later widened to seven scanners, dep-audit filled by trivy) | real (tools optional) |
 | 7 | Egress broker (§9a) — single chokepoint, mode gate + scope + rate + log (RISK-02) | real, tested |
 | 8 | Dynamic sandbox — provision/health/confirm/evidence/teardown (§6) | real, tested |
 | 9 | Multi-model provider layer — alternates, resolution order, ensemble, §8 gate | real, tested |
