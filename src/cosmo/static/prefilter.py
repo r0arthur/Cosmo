@@ -60,6 +60,23 @@ def _sh(cmd: list[str], ev=None) -> str:
     return subprocess.run(cmd, capture_output=True, text=True).stdout
 
 
+def _semgrep_remediation(meta: dict, extra: dict) -> str:
+    """Prose guidance if the rule carries it, else semgrep's autofix, labelled.
+
+    `metadata.fix` is human-readable advice, but `extra.fix` is the *replacement
+    text* semgrep would substitute — so the rule for `subprocess(shell=True)`
+    yields the bare string "False". Rendered unlabelled that reads as
+    "fix: False", which is worse than saying nothing.
+    """
+    prose = meta.get("fix")
+    if isinstance(prose, str) and prose.strip():
+        return prose.strip()
+    autofix = extra.get("fix")
+    if isinstance(autofix, str) and autofix.strip():
+        return f"replace with `{autofix.strip()}`"
+    return ""
+
+
 def _run_semgrep(root: str, ev=None) -> list[Finding]:
     out = _sh(["semgrep", "--config", "auto", "--json", "--quiet", root], ev)
     data = json.loads(out or "{}")
@@ -81,7 +98,7 @@ def _run_semgrep(root: str, ev=None) -> list[Finding]:
                 confirmation_status=ConfirmationStatus.UNCONFIRMED,
                 category=str(cwe) if cwe else None,
                 evidence=r.get("check_id", ""),
-                remediation=meta.get("fix") or extra.get("fix", "") or "",
+                remediation=_semgrep_remediation(meta, extra),
                 # Semgrep security rules are security-relevant, but "sensitive enough
                 # to withhold publicly" is decided at the gate by severity+status.
                 security_sensitive=False,
