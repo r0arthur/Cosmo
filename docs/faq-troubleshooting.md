@@ -131,10 +131,20 @@ pip install semgrep
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### `static:dep-audit (stub — not implemented in MVP)`
+### `static:dep-audit (no dependency scanner ran ...)`
 
-Expected. Dependency auditing is a documented stub — the interface exists, the
-implementation does not. Nothing to fix.
+Dependency auditing is trivy's job, and trivy is not installed or not in
+`static.tools`. Install it and the line goes away, replaced by real CVE
+findings. It is worth being explicit that "no CVEs reported" and "nothing looked
+at the dependencies" are different results — that distinction is the reason this
+line exists.
+
+### `static:find-sec-bugs (Java source found but no compiled classes ...)`
+
+find-sec-bugs analyses **bytecode**, not source, so a repo has to be built
+before it can look at anything. Run your build first (`mvn -q compile`, `gradle
+classes`) so `target/classes` or `build/classes` exists, then re-run. A repo
+with no Java at all produces no such line — nothing was missed.
 
 ### `claude CLI failed after 3 attempts: ...`
 
@@ -170,7 +180,7 @@ operator-controlled. A repo block is ignored wholesale.
 ### `ext:<name> (load error: ...)` / `ext-detector:<id> (error: ...)`
 
 A custom extension failed to import or threw. It is isolated and reported rather
-than crashing the review. See [EXTENSIONS.md](EXTENSIONS.md).
+than crashing the review. See [extensions.md](extensions.md).
 
 ### `sandbox (no container runtime — findings left unconfirmed)`
 

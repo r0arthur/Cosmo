@@ -20,6 +20,14 @@ skills:                              # [pref] — extra review guidance for the 
                                      #   IGNORED + warned — otherwise a repo could promote
                                      #   its own skills and instruct the reviewer directly.
 
+static:                              # [safety] — repo may ADD a scanner, never drop one
+  tools: [semgrep, gitleaks, bandit, trivy, opengrep, trufflehog, find-sec-bugs]
+  concurrency: 4                     #   scanner subprocesses in flight at once
+  # trufflehog_verify: false         #   OPERATOR-ONLY: verification calls the
+                                     #   credential's provider — egress the
+                                     #   broker never sees. A repo value is
+                                     #   ignored + warned.
+
 providers:                           # [pref] — pick your model
   claude: { default: true }          #   built-ins: claude, claude-cli, codex,
   # codex:    { default: true }      #   deepseek, llama. Exactly one default.

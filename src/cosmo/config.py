@@ -22,6 +22,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+# The scanner registry is the single source of truth for which tools exist; the
+# default set is read from it so adding a tool there cannot leave the operator
+# ceiling behind. static.prefilter imports only findings/severity, so there is
+# no cycle back here.
+from .static.prefilter import DEFAULT_TOOLS
+
 import yaml
 
 PREFERENCE_SECTIONS = {
@@ -51,6 +57,11 @@ SAFETY_SECTIONS = {
     # Same guard for a commit-history sweep — one model call per commit makes it
     # the most expensive thing cosmo can run.
     "history",
+    # Which static scanners run. This looks like taste and is not: a repo able
+    # to write `static: {tools: [semgrep]}` could switch off the secret scanner
+    # that would have found its own credentials. The operator's set is a floor,
+    # and a repo may only add to it.
+    "static",
 }
 
 # Data-sensitivity ranked (higher = more restrictive). A repo may only raise it.
@@ -88,6 +99,22 @@ def _clamp_duration_min(op: Any, repo: Any) -> tuple[Any, bool]:
     return op, True
 
 
+def _clamp_tool_union(op: Any, repo: Any) -> tuple[Any, bool]:
+    """Repo may add a static scanner, never remove one the operator enabled.
+
+    The direction is the opposite of every other clamp here and that is the
+    point: for a scanner list, "tighter" means scanning *more*. A repo dropping
+    gitleaks from the list would be a repo hiding its own secrets, so the
+    operator's entries survive and the repo's are added to them. Flagged as
+    clamped only when the repo actually tried to drop one, so an additive repo
+    list produces no warning noise.
+    """
+    op_set = {str(x) for x in (op or [])}
+    repo_set = {str(x) for x in (repo or [])}
+    dropped = op_set - repo_set
+    return sorted(op_set | repo_set), bool(dropped)
+
+
 def _clamp_bool_and(op: Any, repo: Any) -> tuple[Any, bool]:
     """Repo may turn a capability off, never on."""
     eff = bool(op) and bool(repo)
@@ -120,6 +147,9 @@ CLAMP_RULES: dict[str, Clamp] = {
     "fuzzing.confirm_above": _clamp_duration_min,
     # A repo may raise data sensitivity (tighten); sensitive_allowed_vendors is operator-only.
     "providers_policy.data_sensitivity": _clamp_sensitivity,
+    # Tightening a scanner list means scanning *more*, not less, so the clamp is
+    # a union — the repo's entry can add a tool but never drop one.
+    "static.tools": _clamp_tool_union,
     # A repo may only lower the whole-project audit's per-run file/call budget.
     "llm_audit.max_files": _clamp_min,
     # ...and only lower how many of those calls are in flight at once. Raising it
@@ -233,6 +263,10 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
     # in one run, and how many of those reviews run at once. Operator ceilings; a
     # repo may only lower either. See cosmo.audit.
     "llm_audit": {"max_files": 50, "concurrency": 4},
+    # Static scanners. Every tool cosmo can drive is on by default; the ones not
+    # installed report themselves as skipped rather than silently narrowing the
+    # scan. `concurrency` bounds how many scanner *subprocesses* run at once.
+    "static": {"tools": list(DEFAULT_TOOLS), "concurrency": 4},
     # Commit-history sweep (`cosmo history`): commits reviewed in one run. One
     # model call per commit, so this is the sharpest cost ceiling cosmo has.
     # Concurrency is shared with llm_audit — it is the same resource.

@@ -6,7 +6,8 @@
 #
 #   curl-free:  ./scripts/install.sh
 #   options:    PREFIX=~/.local  VENV=~/.local/share/cosmo/venv  ./scripts/install.sh
-#               NO_SEMGREP=1 ./scripts/install.sh    # skip the static scanner
+#               NO_SEMGREP=1 ./scripts/install.sh    # skip semgrep
+#               NO_BANDIT=1  ./scripts/install.sh    # skip bandit
 #
 # Everything is confined to the venv + one symlink; `./scripts/install.sh --uninstall`
 # removes both.
@@ -20,11 +21,13 @@ LINK="$BINDIR/cosmo"
 
 if [[ "${1:-}" == "--uninstall" ]]; then
     rm -f "$LINK"
-    # Only remove the semgrep symlink if it points into our venv (don't clobber
-    # a semgrep the user installed themselves).
-    if [[ -L "$BINDIR/semgrep" && "$(readlink "$BINDIR/semgrep")" == "$VENV/"* ]]; then
-        rm -f "$BINDIR/semgrep"
-    fi
+    # Only remove a scanner symlink if it points into our venv — don't clobber
+    # one the user installed themselves.
+    for tool in semgrep bandit; do
+        if [[ -L "$BINDIR/$tool" && "$(readlink "$BINDIR/$tool")" == "$VENV/"* ]]; then
+            rm -f "$BINDIR/$tool"
+        fi
+    done
     rm -rf "$VENV"
     echo "removed $LINK and $VENV"
     exit 0
@@ -44,16 +47,27 @@ python3 -m venv "$VENV"
 if [[ -z "${NO_SEMGREP:-}" ]]; then
     echo "  + installing semgrep (static scanner) — set NO_SEMGREP=1 to skip"
     "$VENV/bin/pip" install --quiet semgrep || \
-        echo "  ! semgrep install failed; the static stage will show as skipped:"
+        echo "  ! semgrep install failed; that scanner will show as skipped:"
+fi
+
+if [[ -z "${NO_BANDIT:-}" ]]; then
+    echo "  + installing bandit (Python checks) — set NO_BANDIT=1 to skip"
+    "$VENV/bin/pip" install --quiet bandit || \
+        echo "  ! bandit install failed; that scanner will show as skipped:"
 fi
 
 mkdir -p "$BINDIR"
 ln -sf "$VENV/bin/cosmo" "$LINK"
-# cosmo finds semgrep via PATH, but it lives in the venv's bin (not on PATH).
-# Symlink it next to cosmo so the static stage actually runs, not `skipped:`.
-if [[ -x "$VENV/bin/semgrep" ]]; then
-    ln -sf "$VENV/bin/semgrep" "$BINDIR/semgrep"
-fi
+# cosmo finds a scanner via PATH, but these live in the venv's bin (not on
+# PATH). Symlink them next to cosmo so they actually run, rather than each
+# reporting itself as `skipped:`. The other four scanners cosmo drives
+# (opengrep, gitleaks, trufflehog, trivy, find-sec-bugs) are standalone
+# binaries, not pip packages — their skip lines name the release page.
+for tool in semgrep bandit; do
+    if [[ -x "$VENV/bin/$tool" ]]; then
+        ln -sf "$VENV/bin/$tool" "$BINDIR/$tool"
+    fi
+done
 
 echo
 echo "installed: $("$LINK" --version 2>/dev/null || echo cosmo)"
