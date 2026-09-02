@@ -20,7 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cosmo", description="cosmo security review + zero-day discovery (full build, steps 1–20)")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_review = sub.add_parser("review", help="review a local path or GitHub PR")
+    p_review = sub.add_parser(
+        "review", help="review a local path or GitHub PR (--live for a live UI)")
     p_review.add_argument("target", help="local path, or PR ('owner/repo#123' / PR URL)")
     p_review.add_argument("--format", choices=["cli", "sarif", "pr"], default="cli")
     p_review.add_argument("--model", choices=["claude", "claude-cli", "codex", "deepseek", "llama"],
@@ -36,10 +37,10 @@ def main(argv: list[str] | None = None) -> int:
                                "clean for --format sarif/pr)")
     p_review.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
-    p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan (§15)")
+    p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan")
     p_review.add_argument("--no-color", action="store_true")
     p_review.add_argument("--record", action="store_true",
-                          help="record this scan in the trend store (§14) for lifecycle tracking")
+                          help="record this scan in the trend store for lifecycle tracking")
 
     p_waive = sub.add_parser("waive", help="waive a finding by fingerprint into the baseline")
     p_waive.add_argument("target")
@@ -50,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
     p_base.add_argument("target")
     p_base.add_argument("--unwaive", metavar="FINGERPRINT")
 
-    p_hook = sub.add_parser("hook", help="run the git-hook review over the staged diff (§2)")
+    p_hook = sub.add_parser("hook", help="run the git-hook review over the staged diff")
     p_hook.add_argument("--path", default=".", help="repo path (default: cwd)")
     p_hook.add_argument("--blocking", action="store_true", help="abort the commit on findings")
     p_hook.add_argument("--operator-config")
@@ -60,14 +61,14 @@ def main(argv: list[str] | None = None) -> int:
     p_install.add_argument("--type", default="pre-commit", choices=["pre-commit", "pre-push"])
     p_install.add_argument("--blocking", action="store_true")
 
-    p_action = sub.add_parser("action", help="GitHub Action trigger: review a PR (§2)")
+    p_action = sub.add_parser("action", help="GitHub Action trigger: review a PR")
     p_action.add_argument("target", help="PR ref 'owner/repo#123'")
     p_action.add_argument("--post", action="store_true", help="post the gated PR comment")
     p_action.add_argument("--sarif", metavar="FILE", help="write SARIF to FILE")
     p_action.add_argument("--no-block", action="store_true", help="don't fail the job on findings")
     p_action.add_argument("--operator-config")
 
-    p_fuzz = sub.add_parser("fuzz", help="manual-only zero-day fuzzing campaign (§7)")
+    p_fuzz = sub.add_parser("fuzz", help="manual-only zero-day fuzzing campaign")
     p_fuzz.add_argument("target", help="local repo path (fuzzes cosmo's own sandbox build only)")
     p_fuzz.add_argument("--language", default="python",
                         help="entry-point language, to select the integrated engine")
@@ -76,12 +77,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="acknowledge a duration above fuzzing.confirm_above")
     p_fuzz.add_argument("--operator-config")
 
-    p_int = sub.add_parser("interactive", help="live session — same engine, slash-commands (§7)")
+    p_int = sub.add_parser("interactive", help="live session — same engine, slash-commands")
     p_int.add_argument("target", help="local path or GitHub PR to open a session on")
     p_int.add_argument("--operator-config")
     p_int.add_argument("--no-scan", action="store_true", help="don't scan on start")
 
-    p_agent = sub.add_parser("agent", help="natural-language session, harness-agnostic (§17)")
+    p_agent = sub.add_parser("agent", help="natural-language session, harness-agnostic")
     p_agent.add_argument("target", help="local path or GitHub PR to open a session on")
     p_agent.add_argument("--operator-config")
     p_agent.add_argument("--no-scan", action="store_true", help="don't scan on start")
@@ -111,16 +112,16 @@ def main(argv: list[str] | None = None) -> int:
     p_hist.add_argument("--no-color", action="store_true")
     p_hist.add_argument("--operator-config")
 
-    p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup (§14/§15)")
+    p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup")
     p_trends.add_argument("target", help="local path previously scanned with --record")
     p_trends.add_argument("--disclosure", action="store_true",
-                          help="show the coordinated-disclosure queue (§13) instead")
+                          help="show the coordinated-disclosure queue instead")
 
     p_ext = sub.add_parser("extensions", help="list discovered custom extensions (plugins/skills)")
     p_ext.add_argument("--path", default=".", help="repo path for repo cosmo.yaml (default: cwd)")
     p_ext.add_argument("--operator-config", help="operator config that may enable extensions")
 
-    p_plugin = sub.add_parser("plugin", help="manage the Claude Code plugin surface (§17)")
+    p_plugin = sub.add_parser("plugin", help="manage the Claude Code plugin surface")
     p_plugin.add_argument("action", choices=["sync", "check"],
                           help="sync: regenerate manifest+commands from code; "
                                "check: report drift (non-zero exit if any)")
@@ -257,7 +258,7 @@ def _cmd_fuzz(args) -> int:
         return 2
 
     print(f"campaign ready: engine={engine.name}, cap={max_seconds}s, "
-          f"target=sandbox-internal only (§7 scope constraint).")
+          f"target=sandbox-internal only.")
     print("harness generation + engine execution require the configured sandbox "
           "toolchain; run via cosmo.fuzz.run_campaign with a fuzz_runner wired to "
           "the sandbox (§6). No external target is reachable from this command.")
@@ -491,7 +492,7 @@ def _cmd_trends(args) -> int:
 
         noisy = store.noisiest_rules(args.target)
         if noisy:
-            print("\nnoisiest rules (feeds §10):")
+            print("\nnoisiest rules:")
             for cat, n, frac in noisy:
                 print(f"  {cat}: {n} findings, {frac:.0%} waived")
 

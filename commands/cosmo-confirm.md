@@ -13,4 +13,4 @@ Steps:
    then issue `/confirm <args>` — or run it non-interactively if the user gave concrete arguments.
 2. Report exactly what cosmo returns. Do not reinterpret a refusal: if cosmo says a scope was refused, a disclosure needs human approval, or a finding was withheld from a public surface, relay that verbatim.
 
-Guardrails are authoritative and enforced inside cosmo — this command cannot relax the config trust tiers (§15), the fuzz duration cap (§7), the data-governance gate (§8), the disclosure gate (§13), or the egress broker (§9a). It cannot post anything to a public surface; the §11 gate decides that inside cosmo, not here.
+Guardrails are authoritative and enforced inside cosmo — this command cannot relax the config trust tiers, the fuzz duration cap, the data-governance gate, the disclosure gate, or the egress broker. It cannot post anything to a public surface; the public-comment gate decides that inside cosmo, not here.

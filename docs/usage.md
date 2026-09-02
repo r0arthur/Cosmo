@@ -178,7 +178,7 @@ Attacker controls `user_id` via query string.
 ---
 > 1 additional finding(s) were withheld from this public comment by the
 > disclosure gate and routed to private coordinated disclosure. No technical
-> detail, PoC, or severity is shown here by design (§12).
+> detail, PoC, or severity is shown here by design.
 ```
 
 The gate fails **closed**: a finding whose sensitivity is unknown is withheld,
