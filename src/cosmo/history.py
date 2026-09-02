@@ -347,7 +347,7 @@ def run_history_sweep(
     `target` is a local repo path or an `owner/repo` GitHub reference; pass an
     explicit `source` to override that resolution.
     """
-    from .events import Emitter
+    from .events import HISTORY_STAGES, Emitter
     ev = events if isinstance(events, Emitter) else Emitter(events)
 
     sel = selection or Selection()
@@ -372,7 +372,9 @@ def run_history_sweep(
     ev.stage_completed("select", f"{len(reviewed)} commit(s) selected "
                                  f"(budget {budget})")
 
-    ev.stage_started("llm")
+    # Explicit: "llm" is also a review-pipeline stage, and STAGE_LABELS resolves
+    # that id to the review wording.
+    ev.stage_started("llm", dict(HISTORY_STAGES)["llm"])
     ev.operation(f"reviewing {len(reviewed)} commit(s) with model:{provider.name}, "
                  f"{workers} at a time (budget {budget})", stage="llm")
 

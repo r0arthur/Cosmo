@@ -123,6 +123,18 @@ def run_review(
                 progress=progress, events=ev)
             ev.stage_completed("llm", f"{len(findings) - before} finding(s) "
                                       f"from a whole-project audit")
+        elif (size := _single_prompt_size(diff, context)) > MAX_SINGLE_PROMPT_CHARS:
+            # A single-prompt review sends the whole target in one message. On a
+            # whole-tree scan of a large repo that is tens of megabytes — orders
+            # of magnitude past any context window — and the provider rejects it
+            # only *after* cosmo has built it and retried with backoff. Refuse
+            # up front, and name the flag that does work at this size.
+            reason = (f"model:{provider.name} (target too large for a single "
+                      f"prompt: ~{size // 1000}k chars over {len(diff.files)} "
+                      f"file(s), limit ~{MAX_SINGLE_PROMPT_CHARS // 1000}k — "
+                      f"re-run with --audit to review file by file)")
+            skipped.append(reason)
+            ev.stage_skipped("llm", reason)
         else:
             m_key = model_key(file_contents, provider.name, context)
             try:
@@ -203,6 +215,31 @@ def run_review(
         findings=len(actionable), waived=waived, skipped=list(skipped),
         counts=report.counts, target=report.target)
     return report
+
+
+# Ceiling for the single-prompt review path, in characters (~150k tokens). Well
+# under any current context window, and far enough below it that the provider
+# fails on content rather than length. `--audit` is the path that scales past it:
+# it reviews file by file under its own call budget.
+MAX_SINGLE_PROMPT_CHARS = 600_000
+
+
+def _single_prompt_size(diff, context: str) -> int:
+    """Estimate the single-prompt review's size without building it.
+
+    Mirrors `build_review_prompt`: the raw diff when there is one, otherwise the
+    added lines it reconstructs, plus the context block.
+    """
+    if diff.raw:
+        return len(diff.raw) + len(context)
+    # Per file a "--- {path}" header, per line a "+{lineno}: " prefix. Deliberately
+    # an approximation: it exists to catch an overflow that is orders of magnitude
+    # past the limit, not to predict the prompt to the byte.
+    return len(context) + sum(
+        len(f.path) + 5 + sum(len(text) + 8
+                              for h in f.hunks for _, text in h.added)
+        for f in diff.files
+    )
 
 
 def _watch_egress(provider, ev: Emitter) -> None:
