@@ -291,3 +291,123 @@ def test_audit_refuses_when_provider_unavailable(tmp_path, monkeypatch):
 
 def test_audit_listed_in_help(tmp_path):
     assert "/audit" in dispatch(_session(tmp_path), "/help")
+
+
+# --- the session must report its coverage, not just its findings ------------
+
+def _report(target, findings=(), skipped=(), notes=()):
+    from cosmo.findings import Report
+    return Report(target=target, findings=list(findings),
+                  skipped_stages=list(skipped), notes=list(notes))
+
+
+def test_a_scan_s_skipped_stages_survive_into_the_session(tmp_path):
+    """Dropped once, which let `/report` render an incomplete scan as a complete
+    one — the single thing every other surface in cosmo is built to prevent."""
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(
+        str(tmp_path), skipped=["model:claude unavailable"],
+        notes=["reused cached static results"])
+    s.scan()
+    assert "model:claude unavailable" in s.skipped_stages
+    assert "reused cached static results" in s.notes
+
+
+def test_report_cli_shows_what_did_not_run(tmp_path):
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(str(tmp_path),
+                                        skipped=["static:trivy (not installed)"])
+    s.scan()
+    out = dispatch(s, "/report cli")
+    assert "skipped: static:trivy (not installed)" in out
+
+
+def test_coverage_accumulates_across_scans_without_duplicating(tmp_path):
+    """A re-scan re-reports the same skips; the operator wants the union of what
+    went unchecked, not the last run's slice and not three copies of it."""
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(str(tmp_path), skipped=["static:trivy"])
+    s.scan()
+    s.scan()
+    s.scanner = lambda *a, **k: _report(str(tmp_path), skipped=["static:bandit"])
+    s.scan()
+    assert s.skipped_stages == ["static:trivy", "static:bandit"]
+
+
+def test_status_counts_skipped_stages(tmp_path):
+    """"findings: none" reads very differently once you know three stages never
+    ran, so /status says how many."""
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(str(tmp_path), skipped=["a", "b"])
+    s.scan()
+    assert "skipped: 2 stage(s)" in dispatch(s, "/status")
+
+
+# --- /report markdown must not hand back the redacted public comment --------
+
+def test_markdown_is_the_full_report_not_the_gated_comment(tmp_path):
+    """`markdown` aliased `pr`, so asking for markdown in an operator session
+    silently returned the version with sensitive findings withheld."""
+    sensitive = Finding(id="f1", title="live AWS key", severity=Severity.CRITICAL,
+                        source="static:gitleaks", file="a.py", line=1,
+                        fingerprint="abc123", security_sensitive=True,
+                        confirmation_status=ConfirmationStatus.CONFIRMED)
+    s = _session(tmp_path, findings=[sensitive])
+    md = dispatch(s, "/report markdown")
+    assert "# cosmo security report" in md
+    assert "live AWS key" in md                 # the operator sees it in full
+    assert "abc123" in md                       # ...with the waive fingerprint
+
+    gated = dispatch(s, "/report pr")
+    assert "live AWS key" not in gated          # the public surface still hides it
+
+
+def test_report_defaults_and_sarif_still_work(tmp_path):
+    s = _session(tmp_path, findings=[
+        Finding(id="f1", title="t", severity=Severity.HIGH, source="static:semgrep",
+                file="a.py", line=1)])
+    assert "cosmo — " in dispatch(s, "/report")
+    assert '"version": "2.1.0"' in dispatch(s, "/report sarif")
+
+
+# --- /tools -----------------------------------------------------------------
+
+def test_tools_lists_scanners_without_touching_the_network(tmp_path, monkeypatch):
+    """A session command must not make a network call nobody asked for."""
+    import cosmo.versions as versions
+
+    def forbidden(url):
+        raise AssertionError(f"unexpected network call to {url}")
+
+    monkeypatch.setattr(versions, "_get_json", forbidden)
+    out = dispatch(_session(tmp_path), "/tools")
+    assert "cosmo" in out
+    assert "--check-updates" in out          # names the opt-in
+    for name in ("semgrep", "gitleaks", "trivy"):
+        assert name in out
+
+
+def test_tools_is_in_the_guarded_registry(tmp_path):
+    """The plugin surface derives from this registry, so a command missing here
+    cannot be exposed there either."""
+    from cosmo.interactive.commands import _COMMANDS
+    assert "tools" in _COMMANDS
+    assert "/tools" in dispatch(_session(tmp_path), "/help")
+
+
+# --- /status must resolve the model, not print a literal --------------------
+
+def test_status_names_an_unavailable_provider(tmp_path, monkeypatch):
+    """It printed `session_model or "claude (default)"` — a literal, not a
+    lookup — so it said claude whatever the config chose, and never said the
+    provider could not run."""
+    import shutil as _shutil
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
+
+    out = dispatch(_session(tmp_path), "/status")
+    line = next(ln for ln in out.splitlines() if ln.startswith("model:"))
+    assert "unavailable" in line
+    assert "ANTHROPIC_API_KEY" in line
+    assert "model: model:" not in line        # the prefix is not doubled
