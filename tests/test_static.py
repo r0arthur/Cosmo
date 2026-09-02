@@ -4,6 +4,7 @@ Hermetic: feeds the mappers the JSON shapes semgrep and gitleaks actually
 return, and stubs the subprocess call, so neither binary is required.
 """
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,12 +26,14 @@ def _stub_gitleaks(monkeypatch, rows_by_mode):
     """
     calls = []
 
-    def fake_sh(cmd, ev=None):
+    def fake_sh(cmd, ev=None, timeout=None):
         calls.append(cmd)
         mode = "tree" if "--no-git" in cmd else "history"
-        path = Path(cmd[cmd.index("--report-path") + 1])
         rows = rows_by_mode.get(mode)
-        if rows is not None:                 # None = simulate a failed run
+        if isinstance(rows, Exception):      # simulate a timeout / crash
+            raise rows
+        path = Path(cmd[cmd.index("--report-path") + 1])
+        if rows is not None:                 # None = ran but wrote no report
             path.write_text(json.dumps(rows))
         return ""
 
@@ -126,3 +129,33 @@ def test_report_file_is_cleaned_up(monkeypatch, tmp_path):
     _stub_gitleaks(monkeypatch, {"tree": [_leak()]})
     _run_gitleaks(str(tmp_path))
     assert not list(tmp_path.glob(".cosmo-gitleaks*"))
+
+
+def test_history_timeout_keeps_tree_results_and_reports_the_shortfall(
+        monkeypatch, tmp_path):
+    """The history pass walks every commit, and on a partial clone each blob is
+    a network fetch — it can run for minutes. Timing out must not discard the
+    tree findings, nor pass tree-only coverage off as a full scan.
+    """
+    (tmp_path / ".git").mkdir()
+    _stub_gitleaks(monkeypatch, {
+        "tree": [_leak(file="live.py")],
+        "history": subprocess.TimeoutExpired(cmd="gitleaks", timeout=60),
+    })
+    skipped: list[str] = []
+    found = _run_gitleaks(str(tmp_path), None, skipped)
+
+    assert [f.file for f in found] == ["live.py"]     # tree results survive
+    assert any("history pass timed out" in s for s in skipped)
+    assert not list(tmp_path.glob(".cosmo-gitleaks*"))   # still cleaned up
+
+
+def test_a_timeout_does_not_sink_the_stage(monkeypatch, tmp_path):
+    """A partial result is not a failed one — the caller records `skipped`
+    itself, so nothing should propagate out of the runner."""
+    (tmp_path / ".git").mkdir()
+    _stub_gitleaks(monkeypatch, {
+        "tree": [],
+        "history": subprocess.TimeoutExpired(cmd="gitleaks", timeout=60),
+    })
+    assert _run_gitleaks(str(tmp_path), None, []) == []   # no exception
