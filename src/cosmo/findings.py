@@ -5,12 +5,36 @@ N×M adapter problem between sources and output renderers.
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Optional
 
 from .severity import Severity
+
+# "CWE-89", "CWE-89: Improper Neutralization ...", "cwe 89" — tools disagree on
+# how to write the same identifier.
+_CWE = re.compile(r"^\s*cwe[-_\s]?(\d+)", re.IGNORECASE)
+
+
+def normalize_category(value: Optional[str]) -> Optional[str]:
+    """Reduce a CWE category to its bare identifier.
+
+    Every scanner writes it differently: semgrep returns the full MITRE title,
+    bandit and trivy return the number alone. Left as written, `_dedupe` keys on
+    the string, so one vulnerability seen by three tools stays three findings —
+    with seven scanners running that is the dominant kind of noise. The
+    descriptive text is not lost; the runners put it in `evidence`.
+
+    (The compliance rollup does its own extraction in `store.compliance`, so it
+    was never affected; this is about the dedupe key and about what a reader
+    sees in the Category column.)
+    """
+    if not value:
+        return value
+    m = _CWE.match(str(value))
+    return f"CWE-{m.group(1)}" if m else str(value).strip()
 
 
 class ConfirmationStatus(str, Enum):
@@ -26,7 +50,7 @@ class Finding:
     id: str
     title: str
     severity: Severity
-    source: str                       # static | dynamic | fuzz | external | model:<name>
+    source: str                       # static:<tool> | dynamic | fuzz | external | model:<name>
     file: str
     line: int                         # sink location (or 0 if file-level)
 
@@ -46,6 +70,11 @@ class Finding:
 
     first_seen: float = field(default_factory=lambda: time.time())
     last_seen: float = field(default_factory=lambda: time.time())
+
+    def __post_init__(self) -> None:
+        # Normalized here rather than in each runner so it also covers findings
+        # from the model, from extensions, and from anything added later.
+        object.__setattr__(self, "category", normalize_category(self.category))
 
     def to_dict(self) -> dict:
         d = asdict(self)
