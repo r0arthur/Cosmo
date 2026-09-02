@@ -101,10 +101,10 @@ def _delegating_body(name: str, desc: str) -> str:
         f"cosmo says a scope was refused, a disclosure needs human approval, or a "
         f"finding was withheld from a public surface, relay that verbatim.\n\n"
         f"Guardrails are authoritative and enforced inside cosmo — this command "
-        f"cannot relax the config trust tiers (§15), the fuzz duration cap (§7), "
-        f"the data-governance gate (§8), the disclosure gate (§13), or the "
-        f"egress broker (§9a). It cannot post anything to a public surface; the "
-        f"§11 gate decides that inside cosmo, not here."
+        f"cannot relax the config trust tiers, the fuzz duration cap, the "
+        f"data-governance gate, the disclosure gate, or the egress broker. It "
+        f"cannot post anything to a public surface; the public-comment gate "
+        f"decides that inside cosmo, not here."
     )
 
 
