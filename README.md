@@ -31,6 +31,7 @@ cosmo review .                       # your working-tree changes
 cosmo review . --model claude-cli    # add the AI review, on your Claude subscription
 cosmo review owner/repo#123          # a GitHub PR, online — no clone
 cosmo history . --since '6 months ago'   # sweep the repo's past for old flaws
+cosmo review . --report report.md    # full findings + coverage, as Markdown
 ```
 
 No API key is needed for the static scan. Full options in

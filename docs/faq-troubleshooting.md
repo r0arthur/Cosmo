@@ -17,7 +17,10 @@ run for a clean one.
 ```
 Summary: no findings at or above the configured threshold
   skipped: static:semgrep (not installed)
-  skipped: model:claude (unavailable — no SDK or ANTHROPIC_API_KEY)
+  skipped: model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY
+           and the `anthropic` SDK. other providers: claude-cli needs the
+           `claude` CLI on PATH; codex needs OPENAI_API_KEY; deepseek needs
+           DEEPSEEK_API_KEY
 ```
 
 That is **not** "your code is fine". That is "almost nothing ran".
@@ -100,18 +103,22 @@ PR review and remote history sweeps read through `gh`.
 gh auth login && gh auth status
 ```
 
-### `model:claude (unavailable — no SDK or ANTHROPIC_API_KEY)`
+### `model:claude (cosmo's default) unavailable — needs ...`
 
-Appears under `skipped:`. Neither AI-review option is present. Either install and
-log into the `claude` CLI and pass `--model claude-cli`, or
-`pip install anthropic` and export `ANTHROPIC_API_KEY`.
+Appears under `skipped:`. The provider cosmo selected has no credentials on this
+machine. The line names what *that* provider needs, then either the alternatives
+already usable here (`available now: --model codex`) or what each of the others
+would need. Pick any of them with `--model <name>`; the cheapest route is usually
+installing the `claude` CLI, logging in, and passing `--model claude-cli`.
 
 For `cosmo history` this is fatal (exit `2`) rather than a skip — a history sweep
 *is* an LLM review, so there is nothing left to run:
 
 ```
-error: model:claude unavailable — a history sweep is an LLM review,
-so there is nothing to run. Try --model claude-cli.
+error: model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY
+and the `anthropic` SDK. other providers: claude-cli needs the `claude` CLI
+on PATH; codex needs OPENAI_API_KEY; deepseek needs DEEPSEEK_API_KEY
+A history sweep is an LLM review, so there is nothing to run without one.
 ```
 
 ### `static:semgrep (not installed)` / `static:gitleaks (not installed)`
