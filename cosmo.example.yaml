@@ -21,11 +21,12 @@ skills:                              # [pref] — extra review guidance for the 
                                      #   its own skills and instruct the reviewer directly.
 
 providers:                           # [pref] — pick your model
-  claude: { default: true }
-  # codex:    { requires_key: OPENAI_API_KEY }
-  # deepseek: { requires_key: DEEPSEEK_API_KEY }
-  # llama:    { local: true, endpoint: "http://localhost:11434/v1" }
+  claude: { default: true }          #   built-ins: claude, claude-cli, codex,
+  # codex:    { default: true }      #   deepseek, llama. Exactly one default.
+  # deepseek: { default: true }      #   Per-run override: --model <name>.
   # on_failure: fallback              # fallback (to Claude) | hard_fail
+                                     # Each provider's key/endpoint is fixed in
+                                     # providers/registry.py, not configured here.
 
 providers_policy:                    # [safety] — repo may only RAISE sensitivity
   data_sensitivity: normal           #   'sensitive' blocks off-box providers...

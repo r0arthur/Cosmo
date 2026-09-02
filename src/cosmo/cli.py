@@ -394,8 +394,9 @@ def _cmd_history(args) -> int:
         except AttributeError:
             pass
     if not provider.available():
-        msg = (f"model:{provider.name} unavailable — a history sweep is an LLM "
-               f"review, so there is nothing to run. Try --model claude-cli.")
+        from .providers import describe_unavailable
+        msg = (f"{describe_unavailable(provider)} A history sweep is an LLM "
+               f"review, so there is nothing to run without one.")
         ev.error(msg, stage="llm")
         if ui is not None:
             ui.finish(None, 2)
