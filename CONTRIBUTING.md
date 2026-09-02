@@ -169,7 +169,10 @@ Concurrency changes need a test that would actually catch a race:
   memory), and fill in the attribution fields — `project`, `author`, `license`,
   `homepage` — then add the tool to [CREDITS.md](CREDITS.md). A test enforces
   both, because cosmo's detection is other people's work and shipping it
-  uncredited is not acceptable.
+  uncredited is not acceptable. Set `version_argv` and `latest` too, or
+  `cosmo tools` has nothing to say about your scanner and its silence reads as
+  "fine"; if the tool genuinely cannot report a version, pass `version_argv=()`
+  so it is reported as unknown rather than assumed current.
 
 ## Reporting security issues in cosmo itself
 

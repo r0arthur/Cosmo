@@ -53,6 +53,10 @@ def test_every_registered_tool_is_fully_described():
         assert tool.name and tool.binaries and callable(tool.runner)
         assert tool.covers, f"{tool.name} must say what it covers"
         assert tool.install, f"{tool.name}'s skip line must be actionable"
+        # Without an update source `cosmo tools --check-updates` silently has
+        # nothing to say about this tool, which reads as "fine".
+        assert tool.latest.startswith(("pypi:", "github:")), \
+            f"{tool.name} has no update source"
 
 
 def test_tool_names_are_unique_and_indexed():

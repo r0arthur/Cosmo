@@ -36,6 +36,13 @@ a missing tool is reported under `skipped:` in the report:
 The scanners are separate projects by other authors; cosmo runs whichever it
 finds on your `PATH` and never bundles them. See [CREDITS.md](../CREDITS.md).
 
+To see which of them this machine actually has, and whether they are current:
+
+```bash
+cosmo tools                    # offline
+cosmo tools --check-updates    # compare against the newest release
+```
+
 > **cosmo never silently skips a stage.** Anything that did not run is named in
 > the report's `skipped:` list, so a clean result is never confused with an
 > unchecked one.
