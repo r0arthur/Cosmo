@@ -146,7 +146,7 @@ def plugin_manifest() -> dict:
         "name": "cosmo",
         "version": __version__,
         "description": (
-            "Claude-Code-based security review and zero-day discovery tool. "
+            "Security review and zero-day discovery tool. "
             "Static pre-filter + multi-model LLM review over a diff, dynamic "
             "sandbox confirmation, manual fuzzing, trend/compliance tracking, "
             "coordinated disclosure, and authorized external-target recon — all "

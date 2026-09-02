@@ -1,7 +1,7 @@
 [project]
 name = "cosmo"
 version = "0.1.0"
-description = "Claude-Code-based security review and zero-day discovery tool (full build, steps 1–20 of cosmo-architecture.md)"
+description = "Security review and zero-day discovery tool. Model-pluggable — Claude by default, any provider or a local model."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
