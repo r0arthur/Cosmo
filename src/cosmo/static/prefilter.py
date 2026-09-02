@@ -37,7 +37,10 @@ def run_static_prefilter(target_dir: str, events=None) -> tuple[list[Finding], l
             ev.stage_skipped("static", f"{name} not installed — that stage is skipped")
             continue
         try:
-            found = runner(str(root), ev)
+            # `skipped` lets a runner report a *partial* result — gitleaks can
+            # scan the tree but time out on history, which is neither a clean
+            # pass nor a failed stage.
+            found = runner(str(root), ev, skipped)
             findings += found
             ev.output(f"{name}: {len(found)} finding(s)", stage="static",
                       tool=name, findings=len(found))
@@ -53,11 +56,18 @@ def run_static_prefilter(target_dir: str, events=None) -> tuple[list[Finding], l
     return findings, skipped
 
 
-def _sh(cmd: list[str], ev=None) -> str:
+# The gitleaks history pass walks every commit. That is bounded work on a normal
+# clone, but a *partial* clone (`--filter=blob:none`) has to fetch each blob over
+# the network, so a large repo can run for many minutes. Bound it and report the
+# shortfall rather than letting cosmo appear to hang.
+GITLEAKS_HISTORY_TIMEOUT = 60
+
+
+def _sh(cmd: list[str], ev=None, timeout: int | None = None) -> str:
     if ev is not None:
         ev.execute(cmd, stage="static")
     # These scanners exit non-zero when they find issues; don't raise on that.
-    return subprocess.run(cmd, capture_output=True, text=True).stdout
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
 
 
 def _semgrep_remediation(meta: dict, extra: dict) -> str:
@@ -77,7 +87,7 @@ def _semgrep_remediation(meta: dict, extra: dict) -> str:
     return ""
 
 
-def _run_semgrep(root: str, ev=None) -> list[Finding]:
+def _run_semgrep(root: str, ev=None, skipped: list[str] | None = None) -> list[Finding]:
     out = _sh(["semgrep", "--config", "auto", "--json", "--quiet", root], ev)
     data = json.loads(out or "{}")
     findings: list[Finding] = []
@@ -107,12 +117,13 @@ def _run_semgrep(root: str, ev=None) -> list[Finding]:
     return findings
 
 
-def _gitleaks_scan(root: str, mode_args: list[str], tag: str, ev=None) -> list[dict]:
+def _gitleaks_scan(root: str, mode_args: list[str], tag: str, ev=None,
+                   timeout: int | None = None) -> list[dict]:
     """One gitleaks pass. Returns its raw rows."""
     report = Path(root) / f".cosmo-gitleaks-{tag}.json"
     try:
         _sh(["gitleaks", "detect", "--no-banner", *mode_args, "--report-format",
-             "json", "--report-path", str(report), "--source", root], ev)
+             "json", "--report-path", str(report), "--source", root], ev, timeout)
         if not report.exists():
             # gitleaks exits 1 when it finds leaks, so the exit code cannot tell
             # success from failure. A missing report can: gitleaks writes one —
@@ -125,7 +136,7 @@ def _gitleaks_scan(root: str, mode_args: list[str], tag: str, ev=None) -> list[d
         report.unlink(missing_ok=True)
 
 
-def _run_gitleaks(root: str, ev=None) -> list[Finding]:
+def _run_gitleaks(root: str, ev=None, skipped: list[str] | None = None) -> list[Finding]:
     """Scan the working tree, and git history too when there is any.
 
     Two passes, because neither alone is sufficient:
@@ -141,7 +152,21 @@ def _run_gitleaks(root: str, ev=None) -> list[Finding]:
     """
     rows = _gitleaks_scan(root, ["--no-git"], "tree", ev)
     if (Path(root) / ".git").exists():
-        rows += _gitleaks_scan(root, [], "history", ev)
+        try:
+            rows += _gitleaks_scan(root, [], "history", ev,
+                                   timeout=GITLEAKS_HISTORY_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            # The tree results are still good, so this is a partial result, not a
+            # failed stage — report the shortfall and keep what we have. Silently
+            # dropping it would present tree-only coverage as a full scan.
+            note = (f"static:gitleaks history pass timed out after "
+                    f"{GITLEAKS_HISTORY_TIMEOUT}s — working tree scanned, git "
+                    f"history NOT scanned (large repo, or a partial clone "
+                    f"fetching blobs over the network)")
+            if skipped is not None:
+                skipped.append(note)
+            if ev is not None:
+                ev.stage_skipped("static", note)
 
     # The passes overlap on any secret that is both committed and still on disk.
     seen: set[tuple] = set()
