@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from ..config import _parse_duration
 from ..fuzz.campaign import ConfirmationRequired, resolve_duration
-from ..output import render_cli, render_pr_comment, render_sarif
+from ..output import (render_cli, render_pr_comment, render_report,
+                      render_sarif)
 from ..findings import Report
 from ..waiver import Baseline
 from .session import Session
@@ -177,10 +178,10 @@ def _cmd_extensions(session: Session, args) -> str:
 
 def _cmd_status(session: Session, args) -> str:
     """— session snapshot: findings, running campaigns, threshold, model"""
-    counts = Report(session.target, session.snapshot_findings()).counts
-    csum = ", ".join(f"{k}:{v}" for k, v in sorted(counts.items())) or "none"
+    snapshot = session.snapshot_report()
+    csum = ", ".join(f"{k}:{v}" for k, v in sorted(snapshot.counts.items())) or "none"
     camps = ", ".join(f"{n} ({s}s left)" for n, s in session.running_campaigns.items()) or "none"
-    model = session.session_model or "claude (default)"
+    model = _status_model(session)
     if session.audit_running():
         audit = f"running ({session.audit_done}/{session.audit_total} files)"
     elif session.audit_total:
@@ -188,9 +189,35 @@ def _cmd_status(session: Session, args) -> str:
                  + (f", {session.audit_skipped} skipped" if session.audit_skipped else "") + ")")
     else:
         audit = "none"
+    # Coverage belongs in the snapshot too: "findings: none" reads very
+    # differently once you know three stages never ran.
+    skipped = (f"{len(snapshot.skipped_stages)} stage(s) — /report cli to list"
+               if snapshot.skipped_stages else "none")
     return (f"target: {session.target}\nfindings: {csum}\n"
+            f"skipped: {skipped}\n"
             f"threshold: {session.effective_threshold()}\nmodel: {model}\n"
             f"audit: {audit}\ncampaigns: {camps}")
+
+
+def _status_model(session: Session) -> str:
+    """What /status should say about the model.
+
+    It used to print `session_model or "claude (default)"` — a literal, not a
+    lookup. That named claude even when the config had chosen something else,
+    and said nothing when the provider was unavailable, which is the state an
+    operator most needs to know about before trusting a result.
+    """
+    from ..providers.registry import describe_unavailable, resolve_primary
+    try:
+        provider, _ = resolve_primary(session.config,
+                                      session_model=session.session_model)
+    except Exception as exc:
+        return f"unresolved ({exc})"
+    if not provider.available():
+        # The message opens "model:<name>", and /status already prints "model: "
+        # in front of it — strip the duplicate rather than print it twice.
+        return describe_unavailable(provider).removeprefix("model:")
+    return provider.name
 
 
 def _cmd_scope(session: Session, args) -> str:
@@ -317,16 +344,46 @@ def _cmd_audit(session: Session, args) -> str:
 
 
 def _cmd_report(session: Session, args) -> str:
-    """[format] — export findings as cli|sarif|pr (pr goes through the gate)"""
+    """[format] — export as cli|markdown|sarif|pr (pr goes through the gate)"""
     fmt = (args[0] if args else "cli").lower()
-    report = Report(session.target, session.snapshot_findings())
+    # The session's coverage travels with its findings. Built from a bare
+    # `Report(target, findings)` this dropped `skipped_stages` entirely, so an
+    # incomplete scan rendered here as a complete one.
+    report = session.snapshot_report()
     if fmt == "sarif":
         return render_sarif(report)
-    if fmt in ("pr", "issue", "md", "markdown"):
+    if fmt in ("pr", "issue"):
         # Same fail-closed gate as the GitHub Action — a sensitive/confirmed
         # finding (and its PoC) is withheld from a public surface here too.
         return render_pr_comment(report)
+    if fmt in ("md", "markdown", "report"):
+        # `markdown` used to alias `pr`, which meant asking for markdown in an
+        # operator session silently handed back the *redacted* public comment.
+        # It is the full report now; `pr` is still how you see the gated one.
+        return render_report(report, threshold=session.effective_threshold())
     return render_cli(report, color=False)
+
+
+def _cmd_tools(session: Session, args) -> str:
+    """— static scanners: installed, version, and what a missing one costs"""
+    from ..versions import check_cosmo, check_tools
+
+    lines = []
+    for t in check_tools(check_updates=False):
+        if not t.installed:
+            lines.append(f"  ⊘ {t.name}: not installed — {t.covers} NOT scanned "
+                         f"({t.install})")
+        elif t.version:
+            lines.append(f"  ✓ {t.name} {t.version}")
+        else:
+            lines.append(f"  ? {t.name}: installed, version unknown ({t.note})")
+    own = check_cosmo()
+    lines.append(f"  · cosmo {own.version}")
+    # Offline on purpose: a session command must not make a network call the
+    # operator did not ask for. `cosmo tools --check-updates` is the opt-in.
+    lines.append("  (offline; `cosmo tools --check-updates` compares against "
+                 "the latest releases)")
+    return "\n".join(lines)
 
 
 # Order defines /help output. /disclose (§13) landed in step 18 and /scope (§9)
@@ -346,4 +403,5 @@ _COMMANDS = {
     "disclose": _cmd_disclose,
     "audit": _cmd_audit,
     "report": _cmd_report,
+    "tools": _cmd_tools,
 }

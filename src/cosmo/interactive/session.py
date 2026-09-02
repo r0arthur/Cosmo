@@ -29,6 +29,10 @@ class Session:
     fuzz_duration: int | None = None           # /duration — capped by fuzzing.max_duration
     running_campaigns: dict[str, int] = field(default_factory=dict)  # name -> remaining s
     notes: list[str] = field(default_factory=list)
+    # What the scan did NOT cover. Dropped here once, which let `/report` render
+    # an incomplete scan as a complete one — the one thing every other surface
+    # in cosmo is built to prevent. Carried forward from every scan and audit.
+    skipped_stages: list[str] = field(default_factory=list)
     external=None                              # /scope — lazily created ExternalTargetMode
     extensions=None                            # LoadedExtensions — lazily activated
     # Injected so the REPL stays hermetic in tests; defaults to the real engine.
@@ -121,7 +125,29 @@ class Session:
         self.notes.extend(warns)
         report = scanner(self.target, cfg, provider=provider)
         self.findings = report.findings
+        self.record_coverage(report)
         return report
+
+    def record_coverage(self, report: Report) -> None:
+        """Keep a scan's coverage record, deduped, so `/report` can show it.
+
+        A re-scan or an audit re-reports stages it skipped again; the operator
+        wants the union of what went unchecked, not the last run's slice of it.
+        """
+        with self._lock:
+            for s in list(report.skipped_stages or []):
+                if s not in self.skipped_stages:
+                    self.skipped_stages.append(s)
+            for n in list(report.notes or []):
+                if n not in self.notes:
+                    self.notes.append(n)
+
+    def snapshot_report(self) -> Report:
+        """The session's findings *and* its coverage, as one Report."""
+        with self._lock:
+            return Report(target=self.target, findings=list(self.findings),
+                          skipped_stages=list(self.skipped_stages),
+                          notes=list(self.notes))
 
     def find(self, finding_id: str) -> Finding | None:
         for f in self.findings:
