@@ -27,7 +27,10 @@ No findings at or above the configured threshold.
   skipped: static:semgrep (not installed)
   skipped: static:gitleaks (not installed)
   skipped: static:dep-audit (stub — not implemented in MVP)
-  skipped: model:claude (unavailable — no SDK or ANTHROPIC_API_KEY)
+  skipped: model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY
+           and the `anthropic` SDK. other providers: claude-cli needs the
+           `claude` CLI on PATH; codex needs OPENAI_API_KEY; deepseek needs
+           DEEPSEEK_API_KEY
   note: provider 'claude' unavailable (no SDK/key) — falling back
 ```
 
@@ -129,7 +132,20 @@ WORKFLOW   5/11 stages
 ```
 
 It ends on a verdict with a **coverage** panel naming every stage that did not
-run. The UI draws to stderr, so `--format sarif` still pipes cleanly.
+run. The UI draws to stderr, so `--format sarif` still pipes cleanly, and the
+text report follows on stdout once the panel is done.
+
+The panel is a *summary* — the top eight findings, clipped to a column. When you
+have findings to actually work through, ask for the full report:
+
+```bash
+cosmo review . --live --report cosmo-report.md
+```
+
+That writes every field each finding carries — evidence, the rule that fired,
+references, remediation, and the `cosmo waive` command for a false positive —
+untruncated, with the coverage list ahead of the findings. See
+the `--report FILE` section of [usage.md](usage.md).
 
 ---
 
