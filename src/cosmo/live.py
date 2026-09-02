@@ -191,8 +191,13 @@ class LiveUI:
                 if not self._state.finished:
                     self._paint()
 
-    def finish(self, report=None, exit_code: int | None = None) -> None:
-        """Stop the live view and draw the verdict."""
+    def finish(self, report=None, exit_code: int | None = None,
+               report_path: str | None = None) -> None:
+        """Stop the live view and draw the verdict.
+
+        `report_path` is only ever a pointer — the panel never becomes the
+        report, it says where the report is.
+        """
         self._stop.set()
         if self._ticker is not None:
             self._ticker.join(timeout=1)
@@ -201,7 +206,8 @@ class LiveUI:
             if self._tty:
                 self._paint()
                 self._out.write("\033[?25h")   # cursor back
-            self._out.write("\n" + self._final(report, exit_code) + "\n")
+            self._out.write("\n" + self._final(report, exit_code, report_path)
+                            + "\n")
             self._out.flush()
 
     def __enter__(self) -> "LiveUI":
@@ -340,7 +346,8 @@ class LiveUI:
 
     # --- verdict ------------------------------------------------------------
 
-    def _final(self, report, exit_code: int | None) -> str:
+    def _final(self, report, exit_code: int | None,
+                report_path: str | None = None) -> str:
         st = self._state
         w = min(self._size()[0], MAX_PANEL_WIDTH)
         rule = self._c("─" * w, "faint")
@@ -418,6 +425,13 @@ class LiveUI:
                    f"{len(actionable)} actionable finding(s); "
                    f"exit {exit_code if exit_code is not None else (1 if actionable else 0)}")
         out.append(verdict)
+        # This panel is a summary — eight titles, clipped to a column. Say where
+        # the whole thing is, or a reader takes the summary for the result.
+        if report_path and report_path != "-":
+            out.append(f"  {self._c('→', 'gray')} full report: {report_path}")
+        elif actionable:
+            out.append(f"  {self._c('→', 'gray')} full detail follows on stdout"
+                       f"{self._c('  ·  --report FILE writes it as Markdown', 'faint')}")
         return "\n".join(out)
 
 
