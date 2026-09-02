@@ -20,7 +20,7 @@ flowchart TD
     T["target<br/>path · PR · owner/repo"] --> R[diff/resolver]
     R --> D["Diff<br/>files · hunks · added lines"]
     D --> C[cache]
-    C --> S["static/prefilter<br/>semgrep · gitleaks"]
+    C --> S["static/prefilter<br/>7 scanners, in parallel"]
     S --> CX["skills<br/>build review context"]
     CX --> P["providers<br/>data-governance gate"]
     P --> B["broker<br/>egress chokepoint"]
@@ -65,7 +65,7 @@ interactive session are all thin callers — no scan logic lives in any of them.
 | Package | Role |
 |---|---|
 | `diff/` | Normalizes local git, staged, whole-tree, and GitHub PR diffs into one shape |
-| `static/` | Static pre-filter — semgrep, gitleaks, dep-audit (stub) |
+| `static/` | Static pre-filter — a registry of seven scanners (`prefilter.py`) and one runner each (`runners.py`), run as parallel subprocesses |
 | `providers/` | Model layer: Claude, claude-cli, OpenAI-compatible, local llama |
 | `broker/` | The single guarded egress chokepoint — mode gate, scope, rate limit, log |
 | `skills/` | Loading, matching, and trust-framed injection of review guidance |
@@ -146,10 +146,19 @@ threshold → gate — is identical regardless of origin.
 ### Concurrency only where units are genuinely independent
 
 The pipeline stages are sequential because they are dependent: static output
-feeds the LLM prompt; the sandbox confirms what the LLM found. The two places
-work *is* independent — the per-file audit and the per-commit history sweep — run
-concurrently, with the budget applied **before** dispatch so parallelism changes
-the rate and never the call count.
+feeds the LLM prompt; the sandbox confirms what the LLM found. The three places
+work *is* independent run concurrently:
+
+- **the static scanners** — seven separate processes over the same tree, none
+  reading another's output, bounded by `static.concurrency`;
+- **the per-file audit** and **the per-commit history sweep** — with the budget
+  applied **before** dispatch, so parallelism changes the rate and never the
+  call count.
+
+In all three, concurrency is not allowed to change the answer. The scanner pool
+maps over the registry in order, so findings come back in registry order however
+the processes happen to finish, and each runner gets its own list for partial
+coverage notes rather than appending to a shared one.
 
 Threads, not processes: the work is I/O-bound (HTTP and subprocess), so the GIL
 is not in the way.
@@ -172,7 +181,7 @@ without a matching entry shows as untracked rather than silently missing.
 |---|---|---|
 | 1 | `resolve` | Target → normalized `Diff` |
 | 2 | `cache` | Load the incremental cache |
-| 3 | `static` | semgrep, gitleaks, dep-audit (stub) |
+| 3 | `static` | semgrep, opengrep, gitleaks, trufflehog, bandit, trivy, find-sec-bugs — in parallel |
 | 4 | `provider` | Resolve the model + wire the egress broker |
 | 5 | `context` | Static findings + matched skills → review context |
 | 6 | `llm` | One prompt, or `audit.py` per-file |

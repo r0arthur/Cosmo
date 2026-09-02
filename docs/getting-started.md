@@ -24,9 +24,13 @@ like this:
 cosmo — .
 ============================================================
 No findings at or above the configured threshold.
-  skipped: static:semgrep (not installed)
-  skipped: static:gitleaks (not installed)
-  skipped: static:dep-audit (stub — not implemented in MVP)
+  skipped: static:semgrep (not installed — multi-language taint/pattern rules
+           NOT scanned; install: pip install semgrep)
+  skipped: static:gitleaks (not installed — secrets in the working tree and in
+           git history NOT scanned; install: https://github.com/gitleaks/...)
+  ... one line per scanner that is missing ...
+  skipped: static:dep-audit (no dependency scanner ran — install trivy, or
+           enable it in static.tools)
   skipped: model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY
            and the `anthropic` SDK. other providers: claude-cli needs the
            `claude` CLI on PATH; codex needs OPENAI_API_KEY; deepseek needs
@@ -120,7 +124,7 @@ WORKFLOW   5/11 stages
 ──────────────────────────────────────────────────────────────
   ✓ Resolve target into a reviewable diff
   ✓ Load incremental cache
-  ✓ Static pre-filter (semgrep, gitleaks)
+  ✓ Static pre-filter (semgrep, gitleaks, bandit, trivy, …)
   ✓ Resolve model provider + egress broker
   ✓ Build review context (static + skills)
   ● AI security review

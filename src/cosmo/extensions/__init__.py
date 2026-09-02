@@ -10,7 +10,7 @@ findings go through the public-comment gate, custom commands are namespaced so
 they can't impersonate a guarded builtin, and custom-skill trust follows the
 operator's activation decision (RISK-03).
 
-See `docs/EXTENSIONS.md` for the authoring guide and `examples/extensions/` for
+See `docs/extensions.md` for the authoring guide and `examples/extensions/` for
 a worked example.
 """
 from .loader import Discovered, LoadedExtensions, discover, load_enabled

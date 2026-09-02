@@ -9,7 +9,8 @@ context so the model doesn't re-derive it, then dedupe, then waiver suppression
 """
 from __future__ import annotations
 
-from .cache import Cache, cache_or_run, diff_file_contents, model_key, static_key
+from .cache import (Cache, STATIC_VERSION, cache_or_run, diff_file_contents,
+                    model_key, static_key)
 from .config import Config
 from .context import ContextItem, apply_prioritization, build_priority_signals, extract_all, fetch_context
 from .diff import resolve_diff
@@ -18,7 +19,7 @@ from .findings import Finding, Report
 from .providers import ModelProvider, describe_unavailable, resolve_primary
 from .severity import Severity, meets_threshold
 from .skills import build_skill_context, load_skills, match_skills
-from .static import run_static_prefilter
+from .static import run_static_prefilter, source_family, static_ruleset_id
 from .waiver import Baseline
 
 
@@ -64,10 +65,15 @@ def run_review(
 
     # Step 6 — static pre-filter (before the LLM stage, §5), cached per changed-file content.
     ev.stage_started("static")
-    s_key = static_key(file_contents)
+    # The active tool set is part of the key: enabling a scanner and re-running
+    # must not replay the cached findings of the narrower set against unchanged
+    # files, presenting the old coverage as the new one.
+    s_key = static_key(file_contents,
+                       rule_version=f"{STATIC_VERSION}+{static_ruleset_id(config)}")
     static_skips: list[str] = []
     static_findings, hit = cache_or_run(
-        cache, s_key, lambda: _run_static_recorded(diff.target, static_skips, ev))
+        cache, s_key,
+        lambda: _run_static_recorded(diff.target, static_skips, ev, config))
     if hit:
         # A cache hit bypasses the runner, and its skipped-stage records would go
         # with it — leaving a cached run claiming coverage it never had. Cache
@@ -297,10 +303,12 @@ def _skip_key(stage_key: str) -> str:
 
 
 def _run_static_recorded(target: str, skipped: list[str],
-                         ev: Emitter | None = None) -> list[Finding]:
+                         ev: Emitter | None = None,
+                         config: Config | None = None) -> list[Finding]:
     """Run the static pre-filter, appending its skipped-stage notes."""
     ev = ev or Emitter(None)
-    static_findings, static_skipped = run_static_prefilter(target, events=ev)
+    static_findings, static_skipped = run_static_prefilter(target, events=ev,
+                                                           config=config)
     skipped += static_skipped
     return static_findings
 
@@ -376,12 +384,54 @@ def _apply_context(target, diff, findings, config, context_items, notes, skipped
     return apply_prioritization(findings, priority)
 
 
+# Corroboration is evidence, but a small amount of it: two tools agreeing makes a
+# finding more likely real, not certain. Capped so that stacking scanners can
+# never push a pattern match up to the confidence of a reproduced one.
+CORROBORATION_BONUS = 0.05
+MAX_CORROBORATED_CONFIDENCE = 0.95
+
+
+def _stamp_corroboration(kept: Finding, sources: list[str]) -> Finding:
+    """Record the other tools that reported the same thing.
+
+    Without this, running seven scanners looks like running one: the duplicates
+    collapse into the highest-severity report and every other tool's agreement
+    is thrown away. Agreement is the most useful signal a multi-tool setup
+    produces — it is what separates a finding worth opening from a pattern match.
+    """
+    others: list[str] = []
+    for src in sources:
+        if src != kept.source and src not in others:
+            others.append(src)
+    if not others:
+        return kept
+
+    # Only *independent* agreement counts toward confidence. opengrep inherits
+    # semgrep's rules, so the two firing together is one opinion, not two.
+    independent = ({source_family(s) for s in others}
+                   - {source_family(kept.source)})
+    evidence = kept.evidence
+    note = "also reported by: " + ", ".join(others)
+    kept.evidence = f"{evidence}\n{note}" if evidence.strip() else note
+    if independent:
+        kept.confidence = min(MAX_CORROBORATED_CONFIDENCE,
+                              kept.confidence + CORROBORATION_BONUS * len(independent))
+    return kept
+
+
 def _dedupe(findings: list[Finding]) -> list[Finding]:
-    """Coarse dedupe by (file, line, category); the real aggregator (§11) is richer."""
+    """Coarse dedupe by (file, line, category); the real aggregator (§11) is richer.
+
+    With several scanners running, most duplicates are the *same* vulnerability
+    seen by different tools, so the survivor carries their agreement forward
+    rather than the run silently discarding it.
+    """
     seen: dict[tuple, Finding] = {}
+    sources: dict[tuple, list[str]] = {}
     for f in findings:
         key = (f.file, f.line, f.category or f.title)
+        sources.setdefault(key, []).append(f.source)
         cur = seen.get(key)
         if cur is None or f.severity > cur.severity:
             seen[key] = f
-    return list(seen.values())
+    return [_stamp_corroboration(f, sources[k]) for k, f in seen.items()]

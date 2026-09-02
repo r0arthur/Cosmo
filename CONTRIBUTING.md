@@ -7,7 +7,7 @@ a sharpening of the safety model.
 
 There are two very different ways to contribute, and they have different bars:
 
-- **Extend cosmo from the outside** — ship a [custom extension](docs/EXTENSIONS.md)
+- **Extend cosmo from the outside** — ship a [custom extension](docs/extensions.md)
   (a detector, skill, or command). This needs no changes to cosmo itself and no
   review from us; you own and distribute it.
 - **Contribute to cosmo's core** — change the engine, the guardrails, an adapter,
@@ -73,9 +73,12 @@ PYTHONPATH=src python -m cosmo review . --live
 
 ### The test suite is hermetic — keep it that way
 
-No network, no live model, no external binary. `semgrep`, `gitleaks`, and the
-Anthropic SDK are all optional; when absent the relevant stage is reported under
-`skipped:` rather than failing.
+No network, no live model, no external binary. Every static scanner
+(`semgrep`, `opengrep`, `gitleaks`, `trufflehog`, `bandit`, `trivy`,
+`find-sec-bugs`) and the Anthropic SDK are optional; when one is absent it is
+reported under `skipped:` rather than failing. Scanner tests feed the mapper the
+JSON that tool really returns and stub the subprocess — capture it from a real
+run rather than writing it from memory.
 
 New tests must not reach the network or require a binary that isn't already a
 soft dependency. Fake providers are the established pattern — see
@@ -151,7 +154,7 @@ Concurrency changes need a test that would actually catch a race:
 ## What makes a great contribution
 
 - **New detectors / skill packs** — the highest-leverage, lowest-friction
-  contribution. Prefer shipping them as [extensions](docs/EXTENSIONS.md); propose
+  contribution. Prefer shipping them as [extensions](docs/extensions.md); propose
   core inclusion only once a detector has proven itself broadly useful.
 - **Coverage for a vulnerability class cosmo handles weakly** — bring a repro and
   a test.
@@ -160,6 +163,13 @@ Concurrency changes need a test that would actually catch a race:
   Security below for how to report the sensitive ones.
 - **Docs and examples** — a clearer authoring guide or a new worked example under
   `examples/` helps every future contributor.
+- **A new static scanner** — add a runner in `src/cosmo/static/runners.py` and an
+  entry in the `TOOLS` registry. Two things are not optional: build the parser
+  against the tool's **real output** (capture a run; do not write it from
+  memory), and fill in the attribution fields — `project`, `author`, `license`,
+  `homepage` — then add the tool to [CREDITS.md](CREDITS.md). A test enforces
+  both, because cosmo's detection is other people's work and shipping it
+  uncredited is not acceptable.
 
 ## Reporting security issues in cosmo itself
 
@@ -189,8 +199,9 @@ Full text: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 | [architecture.md](docs/architecture.md) | Modules, pipeline, design decisions |
 | [examples.md](docs/examples.md) | End-to-end workflows |
 | [faq-troubleshooting.md](docs/faq-troubleshooting.md) | Error messages |
-| [EXTENSIONS.md](docs/EXTENSIONS.md) | Authoring extensions |
+| [extensions.md](docs/extensions.md) | Authoring extensions |
 | [build-log.md](docs/build-log.md) | The 20-step implementation record |
+| [CREDITS.md](CREDITS.md) | The upstream projects cosmo runs, and their licenses |
 
 If your change alters a command, flag, config key, or safety property, **update
 the relevant doc in the same PR**. Docs drifting from behaviour is a defect in a
