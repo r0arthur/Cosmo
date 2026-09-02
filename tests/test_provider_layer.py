@@ -143,23 +143,37 @@ def test_provider_without_cross_check_role_skipped():
 def test_unavailable_message_names_the_provider_actually_tried(monkeypatch):
     """The skip line was hard-coded to ANTHROPIC_API_KEY whichever model was
     asked for, so a live run read as if Claude were the only model cosmo drives.
+
+    The assertion is scoped to the *requirement* clause on purpose. The
+    alternatives that follow it legitimately name other providers' keys, so a
+    blanket "ANTHROPIC_API_KEY is not in the message" passed only on a machine
+    with the `claude` CLI installed — where the message took the "available now"
+    branch instead — and failed in CI, which has no `claude`. `which` is pinned
+    here so the branch is chosen by the test rather than by the host.
     """
+    import shutil as _shutil
+
     from cosmo.providers import build_provider, describe_unavailable
 
     for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
 
     msg = describe_unavailable(build_provider("codex"))
-    assert "model:codex" in msg
-    assert "OPENAI_API_KEY" in msg
-    assert "ANTHROPIC_API_KEY" not in msg        # not this provider's requirement
+    requirement = msg.split("other providers:")[0]
+    assert "model:codex" in requirement
+    assert "OPENAI_API_KEY" in requirement
+    assert "ANTHROPIC_API_KEY" not in requirement   # not this provider's need
 
 
 def test_unavailable_default_is_marked_as_the_default(monkeypatch):
     from cosmo.providers import build_provider, describe_unavailable
     from cosmo.providers.registry import DEFAULT_PROVIDER
 
+    import shutil as _shutil
+
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
     msg = describe_unavailable(build_provider(DEFAULT_PROVIDER))
     assert "default" in msg
     assert "ANTHROPIC_API_KEY" in msg
