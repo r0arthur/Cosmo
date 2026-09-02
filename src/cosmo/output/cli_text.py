@@ -4,10 +4,17 @@ Local output shows full detail; the public-comment gate does not apply here.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 
 from ..findings import Report
 from ..severity import Severity
+
+# Static-tool messages run to a couple of hundred characters — semgrep's are
+# full paragraphs — so they are trimmed to the terminal here rather than at
+# ingest. The Finding keeps the full text for SARIF; only the display is cut.
+_MAX_WIDTH = 120
+_INDENT = 10
 
 _COLOR = {
     Severity.CRITICAL: "\033[41;97m",
@@ -19,9 +26,23 @@ _COLOR = {
 _RESET = "\033[0m"
 
 
+def _fit(text: str, budget: int, collapse: bool = True) -> str:
+    """One line, trimmed to `budget` display columns.
+
+    `collapse` folds runs of whitespace, which is what tool-supplied prose needs
+    (semgrep messages arrive as wrapped paragraphs). Lines we compose ourselves
+    pass `collapse=False` so their deliberate spacing survives.
+    """
+    text = " ".join(str(text).split()) if collapse else str(text).strip()
+    if budget < 12 or len(text) <= budget:
+        return text
+    return text[: budget - 1].rstrip() + "…"
+
+
 def render_cli(report: Report, color: bool | None = None) -> str:
     if color is None:
         color = sys.stdout.isatty()
+    width = min(shutil.get_terminal_size((100, 24)).columns, _MAX_WIDTH)
 
     def c(sev: Severity, text: str) -> str:
         return f"{_COLOR[sev]}{text}{_RESET}" if color else text
@@ -32,17 +53,20 @@ def render_cli(report: Report, color: bool | None = None) -> str:
         lines.append("No findings at or above the configured threshold.")
     for f in sorted(shown, key=lambda x: x.severity, reverse=True):
         tag = c(f.severity, f" {str(f.severity).upper():^8} ")
-        lines.append(f"{tag} {f.title}")
+        # Truncate the title, not the tagged line: the tag carries ANSI codes,
+        # which have length but no display width.
+        lines.append(f"{tag} {_fit(f.title, width - _INDENT - 1)}")
         loc = f"{f.file}:{f.line}" if f.line else f.file
         meta = [loc, f.source]
         if f.category:
             meta.append(f.category)
         meta.append(f"conf={f.confidence:.0%}")
-        lines.append(f"          {'  ·  '.join(meta)}")
+        lines.append(
+            f"{' ' * _INDENT}{_fit('  ·  '.join(meta), width - _INDENT, collapse=False)}")
         if f.exploit_scenario:
-            lines.append(f"          ↳ {f.exploit_scenario}")
+            lines.append(f"{' ' * _INDENT}↳ {_fit(f.exploit_scenario, width - _INDENT - 2)}")
         if f.remediation:
-            lines.append(f"          fix: {f.remediation}")
+            lines.append(f"{' ' * _INDENT}fix: {_fit(f.remediation, width - _INDENT - 5)}")
         lines.append("")
 
     counts = report.counts
