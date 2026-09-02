@@ -27,7 +27,10 @@ No findings at or above the configured threshold.
   skipped: static:semgrep (not installed)
   skipped: static:gitleaks (not installed)
   skipped: static:dep-audit (stub — not implemented in MVP)
-  skipped: model:claude (unavailable — no SDK or ANTHROPIC_API_KEY)
+  skipped: model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY
+           and the `anthropic` SDK. other providers: claude-cli needs the
+           `claude` CLI on PATH; codex needs OPENAI_API_KEY; deepseek needs
+           DEEPSEEK_API_KEY
   note: provider 'claude' unavailable (no SDK/key) — falling back
 ```
 
