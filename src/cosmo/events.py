@@ -69,7 +69,12 @@ HISTORY_STAGES: tuple[tuple[str, str], ...] = (
     ("threshold", "Apply severity floor"),
 )
 
-STAGE_LABELS: dict[str, str] = dict(STAGES) | dict(HISTORY_STAGES)
+# The two pipelines share stage ids — both have "llm", "dedupe", "waiver",
+# "threshold" — so a single flat lookup cannot serve both. The review pipeline
+# wins here because it is the common path; `history` passes its own label
+# explicitly for the one stage whose wording actually differs. Without that, a
+# `cosmo review` announced "Review each commit; check findings against HEAD".
+STAGE_LABELS: dict[str, str] = dict(HISTORY_STAGES) | dict(STAGES)
 
 
 @dataclass(frozen=True)

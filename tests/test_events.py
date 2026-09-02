@@ -4,6 +4,7 @@ The properties that matter: instrumentation cannot change the review, the stage
 list stays in step with what the engine actually runs, and a cached run reports
 the same coverage as a cold one.
 """
+import subprocess
 import threading
 
 from cosmo.config import Config
@@ -83,6 +84,42 @@ def test_every_emitted_stage_is_a_declared_stage(tmp_path):
     assert emitted <= declared, f"undeclared stage(s): {emitted - declared}"
 
 
+def test_shared_stage_ids_resolve_to_the_review_wording():
+    """`review` and `history` share four stage ids, and only one flat label map
+    serves both. Review wins it, because a review is the common path — a
+    `cosmo review` once announced "Review each commit; check findings against
+    HEAD". History passes its own wording explicitly instead.
+    """
+    from cosmo.events import HISTORY_STAGES, STAGE_LABELS
+    shared = set(dict(STAGES)) & set(dict(HISTORY_STAGES))
+    assert "llm" in shared
+    for sid in shared:
+        assert STAGE_LABELS[sid] == dict(STAGES)[sid]
+
+    seen: list[Event] = []
+    Emitter(seen.append).stage_started("llm")
+    assert seen[0].message == "AI security review"
+
+
+def test_history_stage_keeps_its_own_wording(tmp_path):
+    """The explicit label in the sweep must survive the shared-id collision."""
+    from cosmo.history import Selection, run_history_sweep
+
+    (tmp_path / "a.py").write_text("x = 1\n")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    for cmd in (["config", "user.email", "t@t.test"], ["config", "user.name", "t"],
+                ["add", "a.py"], ["commit", "-q", "-m", "one"]):
+        subprocess.run(["git", "-C", str(tmp_path), *cmd], check=True)
+
+    seen: list[Event] = []
+    cfg = Config(data={"history": {"max_commits": 5}})
+    run_history_sweep(str(tmp_path), _Provider(), cfg,
+                      selection=Selection(), events=seen.append)
+    started = [e.message for e in seen
+               if e.kind is Kind.STAGE_STARTED and e.stage == "llm"]
+    assert started == ["Review each commit; check findings against HEAD"]
+
+
 def test_objective_brackets_the_run(tmp_path):
     _, seen = _collect(tmp_path)
     assert seen[0].kind is Kind.OBJECTIVE_STARTED
@@ -115,6 +152,60 @@ def test_unavailable_provider_is_reported_as_skipped_not_silent(tmp_path):
     run_review(_target(tmp_path), _cfg(), provider=_Down(), events=seen.append)
     skips = [e for e in seen if e.kind is Kind.STAGE_SKIPPED]
     assert any(e.stage == "llm" for e in skips)
+
+
+# --- an oversized target must be refused, not attempted ---------------------
+
+def test_a_target_too_big_for_one_prompt_is_refused_up_front(tmp_path):
+    """Whole-tree mode sends every file in a single prompt. On a real repo that
+    reached 33MB — 42x a 200k-token window — and the provider only rejected it
+    after cosmo had built it and retried three times with backoff. The refusal
+    has to happen before the call, and has to name the flag that does work.
+    """
+    from cosmo.engine import MAX_SINGLE_PROMPT_CHARS
+
+    big = "x" * 2000 + "\n"
+    for i in range(MAX_SINGLE_PROMPT_CHARS // 2000 + 10):
+        (tmp_path / f"f{i}.py").write_text(big)
+
+    class _MustNotBeCalled(_Provider):
+        def review(self, diff, context, findings_so_far):
+            raise AssertionError("the model was called with an oversized prompt")
+
+    seen: list[Event] = []
+    report = run_review(str(tmp_path), _cfg(), provider=_MustNotBeCalled(),
+                        events=seen.append)
+    reason = next(s for s in report.skipped_stages if "too large" in s)
+    assert "--audit" in reason                      # names the way forward
+    assert any(e.kind is Kind.STAGE_SKIPPED and e.stage == "llm" for e in seen)
+
+
+def test_a_normal_target_is_not_refused(tmp_path):
+    """The guard must not fire on anything of ordinary size."""
+    _, seen = _collect(tmp_path)
+    assert not any("too large" in (e.message or "") for e in seen)
+
+
+def test_prompt_size_estimate_tracks_the_builder(tmp_path):
+    """The estimate stands in for a prompt we deliberately never build.
+
+    It only has to be right to an order of magnitude — its job is catching a
+    target 42x past the window, not predicting the prompt to the byte. Measured
+    on real content rather than a toy input, where the fixed
+    "# Diff for {target}" header would dominate and prove nothing.
+    """
+    from cosmo.diff import resolve_diff
+    from cosmo.engine import _single_prompt_size
+    from cosmo.providers.parse import build_review_prompt
+
+    for i in range(20):
+        (tmp_path / f"f{i}.py").write_text("".join(
+            f"value_{n} = compute(n={n})\n" for n in range(50)))
+    d = resolve_diff(str(tmp_path))
+    actual = len(build_review_prompt(d, "ctx", []))
+    estimate = _single_prompt_size(d, "ctx")
+    assert actual > 20_000                       # enough content to be meaningful
+    assert 0.8 * actual <= estimate <= 1.2 * actual
 
 
 # --- a cached run must report the same coverage as a cold one ---------------
