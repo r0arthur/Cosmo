@@ -71,7 +71,7 @@ def _cmd_model(session: Session, args) -> str:
     provider, warns = resolve_primary(session.config, session_model=want)
     if provider.name != want and warns:
         return (f"cannot switch to {want!r}: {warns[-1]}. "
-                f"staying on {provider.name} (§8 fallback).")
+                f"staying on {provider.name}.")
     session.session_model = want
     note = f" ({warns[-1]})" if warns else ""
     return f"model set to {provider.name} for this session{note}"
