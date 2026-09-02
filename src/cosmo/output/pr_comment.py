@@ -46,6 +46,6 @@ def render_pr_comment(report: Report) -> str:
         lines.append(
             f"> {gated} additional finding(s) were withheld from this public comment by the "
             f"disclosure gate and routed to private coordinated disclosure. "
-            f"No technical detail, PoC, or severity is shown here by design (§12)."
+            f"No technical detail, PoC, or severity is shown here by design."
         )
     return "\n".join(lines)
