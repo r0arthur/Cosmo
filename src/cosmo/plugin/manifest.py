@@ -36,6 +36,10 @@ _STANDALONE = {
     "review",     # synthetic umbrella command (not in _COMMANDS) — see below
     "scope", "disclose", "report", "confirm", "waive", "baseline",
     "threshold", "model", "duration", "skills",
+    # "which scanners does this machine have" is a question worth answering
+    # before trusting a result, so it gets its own command rather than being
+    # buried in the review flow.
+    "tools",
 }
 
 
@@ -50,12 +54,19 @@ class CommandSpec:
 
 
 def _first_line(doc: str | None) -> str:
+    """The command's own summary line, without its leading separator.
+
+    Interactive docstrings are written for `/help`, where the convention is
+    `[args] — what it does` and a command taking no arguments starts at the
+    dash. The description below adds its own dash, so leaving that one in place
+    renders "cosmo /tools — — static scanners".
+    """
     if not doc:
         return ""
     for ln in doc.splitlines():
         ln = ln.strip()
         if ln:
-            return ln
+            return ln.lstrip("—- ").strip() if ln.startswith(("—", "-")) else ln
     return ""
 
 
