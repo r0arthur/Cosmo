@@ -14,6 +14,7 @@ Config keys live in **[configuration.md](configuration.md)**; workflows in
 | Command | Purpose |
 |---|---|
 | [`review`](#cosmo-review) | Review a local path or GitHub PR — the core command |
+| [`tools`](#cosmo-tools) | Show which static scanners are installed, and whether they are current |
 | [`history`](#cosmo-history) | Sweep a repository's commit history for vulnerabilities |
 | [`waive`](#cosmo-waive) | Waive a finding by fingerprint into the baseline |
 | [`baseline`](#cosmo-baseline) | List or clear waived findings |
@@ -34,10 +35,69 @@ Config keys live in **[configuration.md](configuration.md)**; workflows in
 | Code | Meaning | Applies to |
 |---|---|---|
 | `0` | Ran successfully; nothing actionable survived the threshold | all |
-| `1` | Ran successfully; at least one non-waived finding survived | `review`, `history`, `hook --blocking`, `action` |
+| `1` | Ran successfully; at least one non-waived finding survived — or, for `tools`, a scanner is missing or outdated | `review`, `history`, `hook --blocking`, `action`, `tools` |
 | `2` | Could not run — bad target, no reviewer available, disabled capability, missing required flag | `review`, `history`, `fuzz`, `plugin check` |
 
 `plugin check` returns non-zero on drift.
+
+---
+
+## `cosmo tools`
+
+What the static stage can actually run here, and whether it is current.
+
+```bash
+cosmo tools                    # offline: what is installed, and its version
+cosmo tools --check-updates    # also compare against the newest release
+cosmo tools --format json      # machine-readable
+```
+
+```
+    TOOL           INSTALLED  LATEST     STATUS
+  ✓ semgrep        1.176.0    1.176.0    up to date
+  ? gitleaks       —          8.30.1     version unknown
+                   └ this build reports no version string; cannot compare against 8.30.1
+  ✓ bandit         1.9.4      1.9.4      up to date
+  ⊘ trivy          —          0.74.0     not installed
+  ? find-sec-bugs  —          1.14.0     version unknown
+                   └ this tool's launcher exposes no version flag; cannot compare against 1.14.0
+
+  ! cosmo 0.1.0  could not check
+    └ upstream publishes no releases
+```
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `--check-updates` | flag | `false` | Ask PyPI/GitHub for the newest published version. **The only part of this command that uses the network.** |
+| `--format` | `cli` \| `json` | `cli` | Output renderer |
+
+**Exit code** is `1` if a scanner is missing or behind its latest release, `0`
+otherwise — so it works as a CI gate. A version cosmo *could not determine* is
+not a failure: not knowing is a fact about the tool, not a verdict on it.
+
+**Five states, deliberately not collapsed into each other:**
+
+| State | Means |
+|---|---|
+| `up to date` | installed, and at or ahead of the latest release |
+| `update available` | installed, and behind it — old rules miss new vulnerability classes |
+| `version unknown` | installed and running, but it will not say which version |
+| `not installed` | missing; everything it would catch is missed, and named under `skipped:` on every run |
+| `could not check` | the update check ran and got no answer (offline, rate-limited, no releases published) |
+
+The last two rows of that table are the point. Debian's `gitleaks` prints
+`version is set by build process` instead of a number, and the find-sec-bugs
+launcher has no version flag at all — so for those, cosmo can learn what the
+latest release is and still not be able to say whether the installed copy is it.
+Rendering that as "up to date" would be the same defect the rest of the tool
+exists to avoid.
+
+**It does not phone home.** `cosmo review` never checks for updates; nothing
+here runs unless you run it, and the network is touched only with
+`--check-updates`, only against release metadata (PyPI's JSON API and GitHub's
+releases API), and nothing about the repo under review is sent.
+
+`cosmo --version` prints cosmo's own version alone.
 
 ---
 

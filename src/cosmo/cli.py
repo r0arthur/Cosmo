@@ -4,6 +4,7 @@ logic lives here, only how a scan is invoked and how results are rendered.
 from __future__ import annotations
 
 import argparse
+import json
 import os.path as _osp
 import sys
 
@@ -18,6 +19,10 @@ from .waiver import Baseline, fingerprint
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cosmo", description="cosmo security review + zero-day discovery (full build, steps 1–20)")
+    from . import __version__
+    parser.add_argument("--version", action="version",
+                        version=f"cosmo {__version__}",
+                        help="print cosmo's version and exit")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_review = sub.add_parser(
@@ -118,6 +123,15 @@ def main(argv: list[str] | None = None) -> int:
     p_hist.add_argument("--no-color", action="store_true")
     p_hist.add_argument("--operator-config")
 
+    p_tools = sub.add_parser(
+        "tools", help="show the static scanners: installed, version, up to date")
+    p_tools.add_argument("--check-updates", action="store_true",
+                         help="also ask PyPI/GitHub for the newest published "
+                              "version of each tool (the only part that uses "
+                              "the network)")
+    p_tools.add_argument("--format", choices=["cli", "json"], default="cli")
+    p_tools.add_argument("--no-color", action="store_true")
+
     p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup")
     p_trends.add_argument("target", help="local path previously scanned with --record")
     p_trends.add_argument("--disclosure", action="store_true",
@@ -192,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fuzz(args)
     if args.cmd == "history":
         return _cmd_history(args)
+    if args.cmd == "tools":
+        return _cmd_tools(args)
     if args.cmd == "trends":
         return _cmd_trends(args)
     if args.cmd == "extensions":
@@ -496,6 +512,89 @@ def _cmd_history(args) -> int:
         _write_report(args.report, render_report(
             report, threshold=config.threshold))
     return exit_code
+
+
+_TOOL_MARK = {
+    "current": ("✓", "up to date"),
+    "outdated": ("↑", "update available"),
+    "unknown": ("?", "version unknown"),
+    "missing": ("⊘", "not installed"),
+    "unchecked": ("·", ""),
+    "check-failed": ("!", "could not check"),
+}
+
+
+def _cmd_tools(args) -> int:
+    """Show what the static stage can actually run, and whether it is current.
+
+    Offline unless `--check-updates` is passed. Exit 1 when something wants
+    attention (a scanner missing, or one behind its latest release) so the
+    command is usable as a CI gate; an *unknown* version is not a failure,
+    because not knowing is a fact about the tool, not a verdict on it.
+    """
+    from .versions import check_cosmo, check_tools
+
+    statuses = check_tools(check_updates=args.check_updates)
+    own = check_cosmo(check_updates=args.check_updates)
+
+    if args.format == "json":
+        import dataclasses
+        print(json.dumps({"cosmo": dataclasses.asdict(own),
+                          "tools": [dataclasses.asdict(t) for t in statuses]},
+                         indent=2))
+        return 1 if any(t.needs_attention for t in statuses) else 0
+
+    rows = []
+    for t in statuses:
+        glyph, label = _TOOL_MARK.get(t.state, ("·", t.state))
+        version = t.version or "—"
+        latest = t.latest or ("—" if args.check_updates else "")
+        rows.append((glyph, t.name, version, latest, label or "", t.note))
+
+    # Widths cover the headers too, or "INSTALLED" overflows its own column.
+    name_w = max([len(r[1]) for r in rows] + [len("TOOL")])
+    ver_w = max([len(r[2]) for r in rows] + [len(r[3]) for r in rows]
+                + [len("INSTALLED")])
+    head = f"  {'':1} {'TOOL':<{name_w}}  {'INSTALLED':<{ver_w}}"
+    if args.check_updates:
+        head += f"  {'LATEST':<{ver_w}}"
+    print(head + "  STATUS")
+    for glyph, name, version, latest, label, note in rows:
+        line = f"  {glyph} {name:<{name_w}}  {version:<{ver_w}}"
+        if args.check_updates:
+            line += f"  {latest:<{ver_w}}"
+        print(line + f"  {label}")
+        if note:
+            print(f"  {'':1} {'':<{name_w}}  └ {note}")
+
+    print()
+    own_glyph, own_label = _TOOL_MARK.get(own.state, ("·", own.state))
+    own_line = f"  {own_glyph} cosmo {own.version}"
+    if own.latest:
+        own_line += f"  (latest {own.latest})"
+    print(own_line + (f"  {own_label}" if own_label else ""))
+    if own.note:
+        print(f"    └ {own.note}")
+
+    missing = [t for t in statuses if t.state == "missing"]
+    outdated = [t for t in statuses if t.state == "outdated"]
+    if missing:
+        print()
+        print(f"  {len(missing)} scanner(s) not installed — every finding they "
+              f"would have caught is missed, and named under `skipped:` on "
+              f"every run:")
+        for t in missing:
+            print(f"    {t.name}: {t.install}")
+    if outdated:
+        print()
+        print(f"  {len(outdated)} scanner(s) behind their latest release. Old "
+              f"rules miss new vulnerability classes.")
+    if not args.check_updates:
+        print()
+        print("  Versions above are what is installed here. Add --check-updates "
+              "to compare against the newest published release (the only part "
+              "of this command that uses the network).")
+    return 1 if (missing or outdated) else 0
 
 
 def _cmd_trends(args) -> int:

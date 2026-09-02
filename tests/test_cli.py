@@ -1,4 +1,6 @@
 """CLI adapter behavior (architecture §2) — thin, but a few guards matter."""
+import json
+
 from cosmo.cli import main
 
 
@@ -74,3 +76,74 @@ def test_report_records_what_did_not_run(monkeypatch, tmp_path):
     dest = tmp_path / "r.md"
     main(["review", str(tmp_path), "--report", str(dest)])
     assert "static:semgrep (not installed)" in dest.read_text()
+
+
+# --- `cosmo tools` ----------------------------------------------------------
+
+def test_version_flag_prints_the_version(capsys):
+    """`cosmo --version` did not exist; it exited 2 with a usage error."""
+    import pytest
+
+    from cosmo import __version__
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    assert __version__ in capsys.readouterr().out
+
+
+def _stub_tools(monkeypatch, *statuses):
+    import cosmo.cli as cli
+    from cosmo.versions import Status
+    monkeypatch.setattr(cli, "_cmd_tools", cli._cmd_tools)   # keep the real one
+    import cosmo.versions as versions
+    monkeypatch.setattr(versions, "check_tools",
+                        lambda check_updates=False, tools=None: list(statuses))
+    monkeypatch.setattr(versions, "check_cosmo",
+                        lambda check_updates=False, source="": Status(
+                            name="cosmo", installed=True, version="9.9.9",
+                            state="unchecked"))
+
+
+def test_tools_lists_what_is_installed(monkeypatch, capsys):
+    from cosmo.versions import Status
+    _stub_tools(monkeypatch,
+                Status(name="semgrep", installed=True, version="1.176.0",
+                       state="unchecked", covers="rules", install="pip install semgrep"))
+    assert main(["tools"]) == 0
+    out = capsys.readouterr().out
+    assert "semgrep" in out and "1.176.0" in out
+    assert "--check-updates" in out          # tells you how to compare
+
+
+def test_tools_exits_nonzero_when_a_scanner_is_missing(monkeypatch, capsys):
+    """Usable as a CI gate: a missing scanner is missed coverage on every run."""
+    from cosmo.versions import Status
+    _stub_tools(monkeypatch,
+                Status(name="trivy", installed=False, state="missing",
+                       covers="CVEs", install="https://example.invalid"))
+    assert main(["tools"]) == 1
+    out = capsys.readouterr().out
+    assert "not installed" in out
+    assert "https://example.invalid" in out
+
+
+def test_an_unknown_version_is_not_a_failure(monkeypatch, capsys):
+    """Not knowing is a fact about the tool, not a verdict on it."""
+    from cosmo.versions import Status
+    _stub_tools(monkeypatch,
+                Status(name="gitleaks", installed=True, state="unknown",
+                       note="this build reports no version string",
+                       covers="secrets", install="x"))
+    assert main(["tools"]) == 0
+    assert "no version string" in capsys.readouterr().out
+
+
+def test_tools_json_is_machine_readable(monkeypatch, capsys):
+    from cosmo.versions import Status
+    _stub_tools(monkeypatch,
+                Status(name="bandit", installed=True, version="1.9.4",
+                       state="current", latest="1.9.4"))
+    main(["tools", "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["tools"][0]["name"] == "bandit"
+    assert payload["cosmo"]["version"] == "9.9.9"
