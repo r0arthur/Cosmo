@@ -53,6 +53,11 @@ class Tool:
     author: str = ""        # who maintains it
     license: str = ""       # SPDX id, as published by the project
     homepage: str = ""
+    # How `cosmo tools` asks this tool its version, and where it looks up the
+    # newest published one. An empty `version_argv` means the tool has no usable
+    # version flag — reported as unknown, never silently treated as current.
+    version_argv: tuple[str, ...] = ("--version",)
+    latest: str = ""        # "pypi:<pkg>" or "github:<owner>/<repo>"
     # Scanners that share a lineage. Two tools finding the same thing is
     # corroboration only when they are independent — opengrep is a fork of
     # semgrep and inherits its rules, so their agreement says almost nothing,
@@ -82,40 +87,49 @@ TOOLS: tuple[Tool, ...] = (
          "multi-language taint/pattern rules",
          "pip install semgrep",
          project="Semgrep", author="Semgrep, Inc. and contributors",
-         license="LGPL-2.1", homepage="https://semgrep.dev"),
+         license="LGPL-2.1", homepage="https://semgrep.dev",
+         latest="pypi:semgrep"),
     Tool("gitleaks", ("gitleaks",), _run_gitleaks,
          "secrets in the working tree and in git history",
          "https://github.com/gitleaks/gitleaks/releases",
          project="Gitleaks", author="Zachary Rice and contributors",
-         license="MIT", homepage="https://gitleaks.io"),
+         license="MIT", homepage="https://gitleaks.io",
+         # `gitleaks --version` is not a flag it has; the subcommand is.
+         version_argv=("version",), latest="github:gitleaks/gitleaks"),
     Tool("bandit", ("bandit",), _run_bandit,
          "Python AST security checks",
          "pip install bandit",
          project="Bandit", author="PyCQA", license="Apache-2.0",
-         homepage="https://bandit.readthedocs.io"),
+         homepage="https://bandit.readthedocs.io", latest="pypi:bandit"),
     Tool("trivy", ("trivy",), _run_trivy,
          "dependency CVEs and IaC misconfiguration",
          "https://github.com/aquasecurity/trivy/releases",
          project="Trivy", author="Aqua Security and contributors",
-         license="Apache-2.0", homepage="https://trivy.dev"),
+         license="Apache-2.0", homepage="https://trivy.dev",
+         latest="github:aquasecurity/trivy"),
     Tool("opengrep", ("opengrep",), _run_opengrep,
          "the semgrep fork's rule set (and the matched source semgrep's OSS "
          "engine withholds)",
          "https://github.com/opengrep/opengrep/releases", family="semgrep",
          project="Opengrep", author="the Opengrep project", license="LGPL-2.1",
-         homepage="https://github.com/opengrep/opengrep"),
+         homepage="https://github.com/opengrep/opengrep",
+         latest="github:opengrep/opengrep"),
     Tool("trufflehog", ("trufflehog",), _run_trufflehog,
          "secrets, with an optional live check against the credential's provider",
          "https://github.com/trufflesecurity/trufflehog/releases",
          project="TruffleHog", author="Truffle Security Co. and contributors",
-         license="AGPL-3.0", homepage="https://trufflesecurity.com"),
+         license="AGPL-3.0", homepage="https://trufflesecurity.com",
+         latest="github:trufflesecurity/trufflehog"),
     Tool("find-sec-bugs", ("findsecbugs", "findsecbugs.sh"), _run_findsecbugs,
          "Java taint analysis (needs compiled bytecode)",
          "https://github.com/find-sec-bugs/find-sec-bugs/releases",
          # A SpotBugs plugin: the analysis engine underneath is SpotBugs
          # (LGPL-2.1), credited separately in CREDITS.md.
          project="Find Security Bugs", author="Philippe Arteau and contributors",
-         license="LGPL-3.0", homepage="https://find-sec-bugs.github.io/"),
+         license="LGPL-3.0", homepage="https://find-sec-bugs.github.io/",
+         # The distributed launcher swallows -version and prints nothing,
+         # so the installed version is not knowable from the CLI.
+         version_argv=(), latest="github:find-sec-bugs/find-sec-bugs"),
 )
 
 TOOLS_BY_NAME: dict[str, Tool] = {t.name: t for t in TOOLS}
