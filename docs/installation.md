@@ -333,7 +333,7 @@ git remote set-url origin ssh://git@ssh.github.com:443/<owner>/<repo>.git
 |---|---|---|
 | `cosmo: command not found` after Method A | `$PREFIX/bin` not on `PATH` | `export PATH="$HOME/.local/bin:$PATH"` |
 | Stages show `static:semgrep (not installed)` | semgrep absent, or in a venv not on `PATH` | Re-run `./scripts/install.sh` without `NO_SEMGREP`, or add the venv's `bin` to `PATH` |
-| `model:claude (unavailable — no SDK or ANTHROPIC_API_KEY)` | Neither install option for the AI review is present | [Turn on the AI review](#turning-on-the-ai-review) |
+| `model:claude (cosmo's default) unavailable — needs ...` | The selected provider has no credentials here; the line lists what the others need | [Turn on the AI review](#turning-on-the-ai-review), or `--model <name>` |
 | `error: target path does not exist: '...'` | Bad path, or an unset shell variable that expanded to nothing | Check the path; for a PR use `owner/repo#123` |
 | `GitHub target requested but 'gh' CLI is not installed` | PR/remote-history target without `gh` | Install `gh` and `gh auth login` |
 | `make deb` fails on `fakeroot` | Build dependency missing | `sudo apt-get install -y fakeroot` |

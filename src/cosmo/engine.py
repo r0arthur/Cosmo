@@ -15,7 +15,7 @@ from .context import ContextItem, apply_prioritization, build_priority_signals, 
 from .diff import resolve_diff
 from .events import Emitter
 from .findings import Finding, Report
-from .providers import ModelProvider, resolve_primary
+from .providers import ModelProvider, describe_unavailable, resolve_primary
 from .severity import Severity, meets_threshold
 from .skills import build_skill_context, load_skills, match_skills
 from .static import run_static_prefilter
@@ -153,10 +153,13 @@ def run_review(
                 ev.error(f"model:{provider.name} failed: {exc}", stage="llm")
                 ev.stage_skipped("llm", f"model:{provider.name} (error: {exc})")
     else:
-        reason = f"model:{provider.name} (unavailable — no SDK or ANTHROPIC_API_KEY)"
+        # Name the provider actually tried and what *it* is missing, plus the
+        # alternatives — a message hard-coded to ANTHROPIC_API_KEY reads as if
+        # Claude were the only model cosmo can drive.
+        reason = describe_unavailable(provider)
         skipped.append(reason)
         ev.stage_skipped("provider", reason)
-        ev.stage_skipped("context", "no reviewer — context not built")
+        ev.stage_skipped("context", "no reviewer available — review context not built")
         ev.stage_skipped("llm", reason)
 
     if not cache.save() and cache.enabled:

@@ -265,8 +265,9 @@ def _cmd_audit(session: Session, args) -> str:
     provider, warns = resolve_primary(session.config, session_model=session.session_model)
     session.notes.extend(warns)
     if not provider.available():
-        return (f"cannot audit: provider {provider.name!r} is unavailable. "
-                f"Set a key, or `/model claude-cli` to use the Claude Code subscription.")
+        from ..providers import describe_unavailable
+        return (f"cannot audit: {describe_unavailable(provider)} "
+                f"Switch in this session with `/model <name>`.")
     # Same broker wiring as the engine (§8 + §9a); a provider that doesn't take
     # one (e.g. the CLI provider) is left as-is.
     if getattr(provider, "broker", None) is None:

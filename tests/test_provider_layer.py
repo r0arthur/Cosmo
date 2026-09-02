@@ -136,3 +136,70 @@ def test_provider_without_cross_check_role_skipped():
         roles = {PRIMARY_REVIEW}
     out, warnings = cross_check([_f()], NoRole([]), _diff())
     assert any("not eligible for cross_check" in w for w in warnings)
+
+
+# --- an unavailable provider must name the whole menu, not just Anthropic ----
+
+def test_unavailable_message_names_the_provider_actually_tried(monkeypatch):
+    """The skip line was hard-coded to ANTHROPIC_API_KEY whichever model was
+    asked for, so a live run read as if Claude were the only model cosmo drives.
+    """
+    from cosmo.providers import build_provider, describe_unavailable
+
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+    msg = describe_unavailable(build_provider("codex"))
+    assert "model:codex" in msg
+    assert "OPENAI_API_KEY" in msg
+    assert "ANTHROPIC_API_KEY" not in msg        # not this provider's requirement
+
+
+def test_unavailable_default_is_marked_as_the_default(monkeypatch):
+    from cosmo.providers import build_provider, describe_unavailable
+    from cosmo.providers.registry import DEFAULT_PROVIDER
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    msg = describe_unavailable(build_provider(DEFAULT_PROVIDER))
+    assert "default" in msg
+    assert "ANTHROPIC_API_KEY" in msg
+
+
+def test_unavailable_message_offers_the_alternatives(monkeypatch):
+    """With nothing configured, the operator gets the full menu and what each
+    one needs — otherwise the only visible option is the one that just failed."""
+    import shutil as _shutil
+
+    from cosmo.providers import build_provider, describe_unavailable
+
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)   # no claude CLI
+
+    msg = describe_unavailable(build_provider("claude"))
+    for other in ("claude-cli", "codex", "deepseek"):
+        assert other in msg
+    # `llama` declares cross_check only — it is not a stand-in for the reviewer.
+    assert "llama" not in msg
+
+
+def test_a_reachable_alternative_is_named_as_a_flag(monkeypatch):
+    import shutil as _shutil
+
+    from cosmo.providers import build_provider, describe_unavailable
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
+
+    msg = describe_unavailable(build_provider("claude"))
+    assert "--model codex" in msg
+    assert "DEEPSEEK_API_KEY" not in msg          # only what is usable right now
+
+
+def test_every_built_in_provider_has_a_stated_requirement():
+    """A provider added without a requirement line would report an unavailable
+    reason of 'setup', which tells an operator nothing."""
+    from cosmo.providers.registry import _FACTORIES, REQUIREMENTS
+
+    assert set(_FACTORIES) == set(REQUIREMENTS)
