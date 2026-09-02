@@ -632,7 +632,7 @@ cosmo interactive <target> [--no-scan] [--operator-config FILE]
 | Command | Does |
 |---|---|
 | `/help` | Full command list |
-| `/status` | Session snapshot: findings, running campaigns, threshold, model |
+| `/status` | Session snapshot: findings, **stages skipped**, threshold, resolved model |
 | `/threshold [level]` | View or set the session severity floor |
 | `/model [provider]` | Switch model — passes the data-governance gate |
 | `/duration [value \| extend <value>]` | View/set the fuzz duration cap |
@@ -643,13 +643,29 @@ cosmo interactive <target> [--no-scan] [--operator-config FILE]
 | `/baseline [unwaive <fp>]` | List or clear waived findings |
 | `/scope [program=… includes=… rate=N]` | Declare an authorized external target |
 | `/disclose <finding-id>` | Draft + **queue** a disclosure — sends nothing |
-| `/report [cli\|sarif\|pr]` | Export findings |
+| `/report [cli\|markdown\|sarif\|pr]` | Export findings **with the session's coverage** |
+| `/tools` | Which static scanners this machine has, and their versions (offline) |
 | `/extensions` | List activated extensions and their `/x-*` commands |
 
 **The command layer cannot bypass the guardrails.** `/duration` is capped by
 `fuzzing.max_duration`; `/model` resolves through the data-governance gate;
 `/report pr` renders through the fail-closed gate; `/threshold` only moves the
 session floor and never writes a safety key.
+
+**`/report` carries the session's coverage.** Every `skipped:` line the scan
+produced travels with the findings, accumulated across re-scans and audits, so a
+session cannot show an incomplete scan as a complete one. `/status` says how many
+stages that is.
+
+**`/report markdown` is the full operator report** — the same thing
+`cosmo review --report FILE` writes, untruncated and with waive commands.
+`/report pr` is the *gated* public version, and only that one withholds
+sensitive findings. (`markdown` previously aliased `pr`, which meant asking for
+markdown in an operator session silently handed back the redacted comment.)
+
+**`/tools` is offline.** It reports what is installed and each scanner's version;
+`cosmo tools --check-updates` is the opt-in that compares against upstream
+releases. A session command never makes a network call you did not ask for.
 
 `/audit` runs on a background thread — several files at once — so the prompt
 stays responsive. `/status` shows progress (`audit: running (3/12 files)`).
