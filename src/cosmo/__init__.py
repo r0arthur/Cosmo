@@ -1,4 +1,10 @@
-"""cosmo — Claude-Code-based security review and zero-day discovery tool.
+"""cosmo — security review and zero-day discovery tool.
+
+Model-pluggable: Claude is the default and the fallback, but the §8 provider
+layer also drives Codex, DeepSeek, and a local Llama endpoint, and the
+data-governance gate exists so a sensitive repo can be pinned to a local model.
+cosmo additionally *ships as* a Claude Code plugin — that is a distribution
+surface, not a requirement.
 
 The full architecture (build steps 1–20 of cosmo-architecture.md): core engine +
 multi-model provider layer, config trust tiers (§15), diff resolver, output
