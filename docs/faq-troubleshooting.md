@@ -131,6 +131,18 @@ pip install semgrep
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+### How do I know which scanners I have, and whether they are current?
+
+```bash
+cosmo tools --check-updates
+```
+
+Offline without the flag. Exits `1` if a scanner is missing or outdated, so it
+works as a CI gate. Two tools cannot report their own version — Debian's
+`gitleaks` prints `version is set by build process`, and the find-sec-bugs
+launcher has no version flag — and those show as `version unknown` rather than
+being assumed fine.
+
 ### `static:dep-audit (no dependency scanner ran ...)`
 
 Dependency auditing is trivy's job, and trivy is not installed or not in
