@@ -107,15 +107,51 @@ def _run_semgrep(root: str, ev=None) -> list[Finding]:
     return findings
 
 
-def _run_gitleaks(root: str, ev=None) -> list[Finding]:
-    # gitleaks writes its report to a file; use a temp path within the tree's scratch.
-    report = Path(root) / ".cosmo-gitleaks.json"
+def _gitleaks_scan(root: str, mode_args: list[str], tag: str, ev=None) -> list[dict]:
+    """One gitleaks pass. Returns its raw rows."""
+    report = Path(root) / f".cosmo-gitleaks-{tag}.json"
     try:
-        _sh(["gitleaks", "detect", "--no-banner", "--report-format", "json",
-             "--report-path", str(report), "--source", root], ev)
-        rows = json.loads(report.read_text()) if report.exists() else []
+        _sh(["gitleaks", "detect", "--no-banner", *mode_args, "--report-format",
+             "json", "--report-path", str(report), "--source", root], ev)
+        if not report.exists():
+            # gitleaks exits 1 when it finds leaks, so the exit code cannot tell
+            # success from failure. A missing report can: gitleaks writes one —
+            # even an empty array — on every completed run. Raising surfaces the
+            # failure under `skipped:` instead of passing an empty result off as
+            # a clean scan.
+            raise RuntimeError(f"gitleaks {tag} scan wrote no report — did not complete")
+        return json.loads(report.read_text()) or []
     finally:
         report.unlink(missing_ok=True)
+
+
+def _run_gitleaks(root: str, ev=None) -> list[Finding]:
+    """Scan the working tree, and git history too when there is any.
+
+    Two passes, because neither alone is sufficient:
+
+    * `--no-git` reads the files as they are on disk. Without it gitleaks walks
+      *commits* and misses a secret sitting uncommitted in the working tree —
+      exactly what the pre-commit hook exists to catch. On a non-git target it
+      found nothing at all and still exited 0, so cosmo reported "no findings"
+      over a plaintext key.
+    * The default git pass still matters for a secret that was committed and
+      later deleted. It is gone from disk but not from history, and it still
+      needs rotating.
+    """
+    rows = _gitleaks_scan(root, ["--no-git"], "tree", ev)
+    if (Path(root) / ".git").exists():
+        rows += _gitleaks_scan(root, [], "history", ev)
+
+    # The passes overlap on any secret that is both committed and still on disk.
+    seen: set[tuple] = set()
+    unique: list[dict] = []
+    for r in rows:
+        key = (r.get("RuleID"), r.get("File"), r.get("StartLine"))
+        if key not in seen:
+            seen.add(key)
+            unique.append(r)
+    rows = unique
     findings: list[Finding] = []
     for i, r in enumerate(rows or []):
         findings.append(
