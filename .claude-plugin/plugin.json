@@ -1,7 +1,7 @@
 {
   "name": "cosmo",
   "version": "0.1.0",
-  "description": "Claude-Code-based security review and zero-day discovery tool. Static pre-filter + multi-model LLM review over a diff, dynamic sandbox confirmation, manual fuzzing, trend/compliance tracking, coordinated disclosure, and authorized external-target recon \u2014 all behind a two-tier config trust model, a single egress broker, and a fail-closed public-comment gate. Reuses Claude Code auth/session/tool-use; does not fork it.",
+  "description": "Security review and zero-day discovery tool. Static pre-filter + multi-model LLM review over a diff, dynamic sandbox confirmation, manual fuzzing, trend/compliance tracking, coordinated disclosure, and authorized external-target recon \u2014 all behind a two-tier config trust model, a single egress broker, and a fail-closed public-comment gate. Reuses Claude Code auth/session/tool-use; does not fork it.",
   "author": {
     "name": "cosmo"
   },

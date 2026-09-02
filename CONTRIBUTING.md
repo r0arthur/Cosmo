@@ -1,6 +1,6 @@
 # Contributing to cosmo
 
-cosmo is a Claude-Code-based security review and zero-day discovery tool. It is
+cosmo is a security review and zero-day discovery tool. It is
 built by security researchers, for security researchers — contributions from the
 community are welcome, whether that's a new detector, a skill pack, a bug fix, or
 a sharpening of the safety model.

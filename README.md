@@ -61,6 +61,9 @@ No API key is needed for the static scan. Full options in
   `cosmo history` for the past — including remote repositories with no clone.
 - **Static + AI, in that order.** semgrep and gitleaks run first; their output
   becomes context for the model rather than work it repeats.
+- **Model-pluggable, not model-locked.** Claude by default, plus Codex,
+  DeepSeek, and a local Llama endpoint. Mark a repo `sensitive` and only local
+  providers are eligible — source that must not leave your network never does.
 - **Fail-closed public output.** A confirmed or sensitive finding is withheld
   from a PR comment and routed to private coordinated disclosure. The gate fails
   closed on unknown sensitivity.
@@ -92,9 +95,15 @@ These are enforced in code, not documented as guidance:
 
 ## Requirements
 
-Python **3.10+** and `PyYAML`. Everything else — `semgrep`, `gitleaks`, the
-`claude` CLI or an `ANTHROPIC_API_KEY`, the `gh` CLI — is optional, and cosmo
-reports what's missing rather than failing.
+Python **3.10+** and `PyYAML`. Everything else — `semgrep`, `gitleaks`, a model
+provider, the `gh` CLI — is optional, and cosmo reports what's missing rather
+than failing.
+
+**No Claude account is required.** The static scan runs with no account at all,
+and the AI stage takes whichever provider you configure. Claude is the default
+because it is the fallback when a configured provider is unavailable; cosmo also
+*ships as* a Claude Code plugin, which is a distribution surface rather than a
+dependency.
 
 ---
 

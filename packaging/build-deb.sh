@@ -67,9 +67,14 @@ Recommends: git
 Installed-Size: $INSTALLED_KB
 Maintainer: r0arthur <karthur0822@gmail.com>
 Homepage: https://github.com/r0arthur/Cosmo
-Description: Claude-Code-based security review and zero-day discovery tool
- cosmo runs a guarded static + AI security review over a diff, a GitHub PR, or a
- whole project, and ships as both a CLI and a Claude Code plugin.
+Description: Security review and zero-day discovery tool
+ cosmo runs a guarded static + AI security review over a diff, a GitHub PR, a
+ whole project, or a repository's commit history, and ships as both a CLI and a
+ Claude Code plugin.
+ .
+ The AI review is model-pluggable: Claude by default, with Codex, DeepSeek, and a
+ local Llama endpoint also supported, so source that must not leave your network
+ can be pinned to a local model.
  .
  The static scan needs no account. For the AI review, install the 'claude' CLI
  (uses your Claude Code subscription) and run: cosmo review . --model claude-cli.
