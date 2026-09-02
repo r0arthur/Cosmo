@@ -157,3 +157,39 @@ def test_header_states_target_floor_and_counts():
     assert "**Severity floor:** high" in out
     assert "1970-01-01" in out          # `now` honoured, so output is testable
     assert "02:05" in out               # elapsed rendered mm:ss
+
+
+# --- CWE identifiers are normalized so duplicates actually collapse ---------
+
+def test_a_verbose_cwe_is_reduced_to_its_identifier():
+    """semgrep returns the full MITRE title, bandit and trivy the number alone.
+    Left as written, the same vulnerability from two tools has two different
+    category strings, so dedupe keeps both."""
+    from cosmo.findings import normalize_category
+
+    verbose = ("CWE-78: Improper Neutralization of Special Elements used in an "
+               "OS Command ('OS Command Injection')")
+    assert normalize_category(verbose) == "CWE-78"
+    assert normalize_category("CWE-78") == "CWE-78"
+    assert normalize_category("cwe 328") == "CWE-328"
+    assert normalize_category(None) is None
+
+
+def test_a_non_cwe_category_is_left_alone():
+    from cosmo.findings import normalize_category
+    assert normalize_category("A03:2021 - Injection") == "A03:2021 - Injection"
+
+
+def test_normalisation_happens_on_the_finding_itself():
+    """Applied in Finding rather than per runner, so it also covers the model,
+    extensions, and anything added later."""
+    f = _f(category="CWE-89: SQL Injection")
+    assert f.category == "CWE-89"
+
+
+def test_two_tools_reporting_one_issue_become_one_finding():
+    from cosmo.engine import _dedupe
+
+    a = _f(source="static:semgrep", category="CWE-78: OS Command Injection")
+    b = _f(id="f2", source="static:bandit", category="CWE-78")
+    assert len(_dedupe([a, b])) == 1

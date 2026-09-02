@@ -144,7 +144,8 @@ class Extension:
   isolated and recorded under `skipped:`, never crashing the review.
 - **CommandHandler** `(session, args) -> str`, the same signature as builtin
   interactive commands. `session` gives you `.target`, `.config`, `.findings`.
-- **Skill**: same SKILL.md convention as [§10 skills](../README.md); `applies_to`
+- **Skill**: the same convention as a repo skill — see
+  [usage.md § Review skills](usage.md#review-skills); `applies_to`
   is a list of globs matched against changed files.
 
 ## Testing your extension

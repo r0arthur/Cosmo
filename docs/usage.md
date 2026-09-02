@@ -109,6 +109,68 @@ progress stream would corrupt the UI's repaints, so it is suppressed.
 after it. The panel shows the top eight findings clipped to a column, so for
 anything you intend to triage from, add `--report FILE`.
 
+### The static scanners
+
+Seven scanners, run as parallel subprocesses, all normalized into the one
+`Finding` shape. Which are enabled is `static.tools` — a **safety** setting, so a
+scanned repo may add a scanner but never remove one you enabled.
+
+| Tool | Covers | Notes |
+|---|---|---|
+| `semgrep` | multi-language taint/pattern rules | OSS engine returns `requires login` instead of the matched source |
+| `opengrep` | the semgrep fork's rules | Same JSON, same rule format — and it *does* return the matched source |
+| `gitleaks` | secrets: working tree **and** git history | Two passes; history is bounded by a 60s timeout |
+| `trufflehog` | secrets, by detector | Can *verify* a credential against its provider — off by default, see below |
+| `bandit` | Python AST checks | Severity and confidence are reported separately |
+| `trivy` | dependency CVEs, IaC misconfiguration | This is what fills the old `dep-audit` stub |
+| `find-sec-bugs` | Java taint analysis | Reads **bytecode** — the project must be built |
+
+Each is a separate project, run as a subprocess and never bundled — see
+[CREDITS.md](../CREDITS.md) for authorship and licenses.
+
+**Duplicates and agreement.** Several of these overlap on purpose. Findings are
+deduplicated on `(file, line, CWE)`, the highest severity wins, and the survivor
+records the rest:
+
+```
+    semgrep rule: python.lang.security.audit.subprocess-shell-true
+    ...
+    also reported by: static:bandit, static:opengrep
+```
+
+Independent agreement raises confidence slightly (+0.05 each, capped at 0.95).
+`opengrep` agreeing with `semgrep` does **not**: it is a fork of semgrep and
+inherits its rules, so the two firing together is one opinion. `gitleaks` and
+`trufflehog` agreeing is two separate detector sets, and does count.
+
+**find-sec-bugs needs a build.** It analyses compiled classes, so cosmo looks for
+`target/classes`, `build/classes`, `out/production`, or a jar under `target/` and
+`build/libs/`. If the tree has `.java` files and none of those, that is reported
+as lost coverage rather than passed over:
+
+```
+skipped: static:find-sec-bugs (Java source found but no compiled classes — it
+         analyses bytecode; build the project first, e.g. `mvn -q compile`, so
+         target/classes exists)
+```
+
+A tree with no Java at all says nothing — nothing was missed.
+
+**trufflehog verification is off by default.** Verification means trufflehog
+calls the credential's own provider to see whether it still works, which
+transmits candidate secrets to third parties that are not your model provider
+and never pass the egress broker. Turn it on in the **operator** config only:
+
+```yaml
+static:
+  trufflehog_verify: true
+```
+
+A repo cannot set it — the key has no tightening rule, so the safety merge
+ignores and warns on a repo value. When it is on, a verified credential is
+reported `critical` with `confirmation_status: confirmed`, because the provider
+just accepted it.
+
 ### Output — `--format cli`
 
 ```
@@ -185,7 +247,7 @@ What ran and what did not. A finding count is only as strong as the stages behin
 
 **2 stage(s) did not run:**
 
-- ⊘ static:dep-audit (stub — not implemented in MVP)
+- ⊘ static:dep-audit (no dependency scanner ran — install trivy, or enable it in static.tools)
 - ⊘ model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY and the `anthropic` SDK. available now: --model claude-cli
 
 ## Summary
@@ -616,7 +678,7 @@ cosmo extensions [--path DIR] [--operator-config FILE]
 
 Lists discovered extensions. **Discovery is not activation** — only names in the
 operator's `extensions.enabled` are imported and run. See
-[EXTENSIONS.md](EXTENSIONS.md).
+[extensions.md](extensions.md).
 
 ---
 

@@ -100,10 +100,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      # NO_SEMGREP keeps the job fast; the static scanner is an optional
-      # companion the script already degrades without.
+      # NO_SEMGREP/NO_BANDIT keep the job fast. Both scanners are optional
+      # companions the script already degrades without, and this job is testing
+      # the installer, not the scanners.
       - name: Run the documented installer
-        run: NO_SEMGREP=1 ./scripts/install.sh
+        run: NO_SEMGREP=1 NO_BANDIT=1 ./scripts/install.sh
 
       - name: cosmo is on PATH and runs
         run: |
