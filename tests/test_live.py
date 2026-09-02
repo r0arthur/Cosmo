@@ -5,6 +5,7 @@ reflects what the engine reported — stages, coverage, verdict — and that it
 never writes to stdout or invents a stage of its own.
 """
 import io
+import os
 import threading
 
 from cosmo.events import STAGES, Emitter, Event, Kind
@@ -212,3 +213,61 @@ def test_clip_collapses_whitespace_and_truncates():
 def test_dur_formats_mm_ss():
     assert _dur(0) == "00:00"
     assert _dur(75) == "01:15"
+
+
+# --- the panel uses the terminal it was given -------------------------------
+
+def test_wide_terminal_is_not_clipped_to_a_narrow_column():
+    """The panel was pinned at 110 columns, so on a wide terminal it drew down
+    the left half of the screen and ellipsised every finding title — the part of
+    the line that carries the meaning."""
+    from cosmo.live import MAX_PANEL_WIDTH
+
+    title = ("Using variable interpolation ${{...}} with github context data in "
+             "a run: step could allow an attacker to inject their own code")
+    assert len(title) > 110                       # would have been clipped before
+    ui = _ui()
+    Emitter(ui).finding(title, severity="high", stage="static")
+    frame = "\n".join(ui._frame(180, 60))
+    assert title in frame
+    assert "─" * 170 in frame                     # rule follows the real width
+
+    narrow = "\n".join(_ui()._frame(90, 60))      # a small terminal still fits
+    assert "─" * 91 not in narrow
+    assert MAX_PANEL_WIDTH > 110
+
+
+def test_panel_width_is_capped_on_an_ultrawide_terminal():
+    from cosmo.live import MAX_PANEL_WIDTH
+
+    ui = _ui()
+    Emitter(ui).stage_started("static")
+    for line in ui._frame(400, 60):
+        assert len(line) <= MAX_PANEL_WIDTH
+
+
+def test_verdict_uses_the_same_width_as_the_panel(monkeypatch):
+    import shutil as _shutil
+
+    monkeypatch.setattr(_shutil, "get_terminal_size",
+                        lambda fallback=(100, 30): os.terminal_size((180, 50)))
+    long_title = "x" * 150
+    out = _ui()._final(_report(_finding(title=long_title)), 1)
+    assert long_title in out
+
+
+def test_a_long_path_does_not_squeeze_the_finding_title(monkeypatch):
+    """A whole-tree run carries absolute paths; sizing the title column against
+    an unbounded location column left every title a 30-character stub."""
+    import shutil as _shutil
+
+    monkeypatch.setattr(_shutil, "get_terminal_size",
+                        lambda fallback=(100, 30): os.terminal_size((160, 50)))
+    long_path = "/tmp/" + "/".join(f"segment{i}" for i in range(12)) + "/app.py"
+    assert len(long_path) > 120
+    title = "Found subprocess function check_output with shell=True"
+    f = Finding(id="f1", title=title, severity=Severity.HIGH, source="static",
+                file=long_path, line=3)
+    out = _ui()._final(Report(target=".", findings=[f], skipped_stages=[], notes=[]), 1)
+    assert title in out
+    assert "app.py:3" in out            # the identifying tail survives the clip

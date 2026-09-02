@@ -59,6 +59,13 @@ _GUTTER: dict[Kind, tuple[str, str, str]] = {
     Kind.OBJECTIVE_COMPLETED: ("✓", "", "green"),
 }
 
+# The panel was pinned at 110 columns, so on a wide terminal it drew the report
+# down the left half of the screen and clipped every finding title to an
+# ellipsis — the one part of a finding line that carries the meaning. Use the
+# width the terminal actually reports; the cap only stops an ultrawide monitor
+# from drawing a rule the eye can't track back.
+MAX_PANEL_WIDTH = 200
+
 PENDING, ACTIVE, DONE, SKIPPED = "pending", "active", "done", "skipped"
 
 _STATUS_GLYPH = {
@@ -243,7 +250,7 @@ class LiveUI:
 
     def _frame(self, width: int, height: int) -> list[str]:
         st = self._state
-        w = min(width, 110)
+        w = min(width, MAX_PANEL_WIDTH)
         out: list[str] = []
         rule = self._c("─" * w, "faint")
 
@@ -256,7 +263,7 @@ class LiveUI:
         status = self._c("● IN PROGRESS", "yellow")
         if st.finished:
             status = self._c("✓ COMPLETE", "green")
-        meta = (f"  {self._c('Target', 'gray')}  {_clip_path(st.target, 44)}"
+        meta = (f"  {self._c('Target', 'gray')}  {_clip_path(st.target, max(44, w - 66))}"
                 f"    {self._c('Mode', 'gray')}  {mode}"
                 f"    {self._c('Floor', 'gray')}  {st.threshold or '-'}")
         out.append(meta)
@@ -335,7 +342,7 @@ class LiveUI:
 
     def _final(self, report, exit_code: int | None) -> str:
         st = self._state
-        w = min(self._size()[0], 110)
+        w = min(self._size()[0], MAX_PANEL_WIDTH)
         rule = self._c("─" * w, "faint")
         findings = list(getattr(report, "findings", []) or [])
         actionable = [f for f in findings if not f.waived]
@@ -368,15 +375,19 @@ class LiveUI:
                                f"{sev[name]:>3}  {name}")
             out.append("")
             shown = sorted(actionable, key=lambda f: f.severity, reverse=True)[:8]
-            loc_w = max(len(f"{f.file}:{f.line}") for f in shown)
-            title_w = max(12, w - loc_w - 18)
+            # Bound the location column before sizing the title against it: a
+            # whole-tree run carries absolute paths, and one 130-character path
+            # would otherwise squeeze every title down to a stub.
+            loc_w = min(max(len(f"{f.file}:{f.line}") for f in shown),
+                        max(24, w // 3))
+            title_w = max(24, w - loc_w - 18)
             for f in shown:
                 col = _SEVERITY_COLOR.get(str(f.severity), "white")
                 # Pad before colouring: escape codes have width on the terminal
                 # but length in the format spec, so padding a coloured string
                 # misaligns the column.
                 label = f"{str(f.severity).upper():<8}"
-                where = f"{f.file}:{f.line}"
+                where = _clip_path(f"{f.file}:{f.line}", loc_w)
                 out.append(f"    {self._c(label, col)}  "
                            f"{_clip(f.title, title_w):<{title_w}}  "
                            f"{self._c(where, 'faint')}")

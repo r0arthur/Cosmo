@@ -96,9 +96,10 @@ A starting point with every key annotated ships as
 | `NO_COLOR` | Any value disables ANSI colour in `--live` | Colour on when stderr is a TTY |
 | `GH_TOKEN` | Consumed by the `gh` CLI in CI for PR reads/comments | `gh`'s own auth is used |
 
-Provider key names are not hardcoded per provider — they come from the
-`requires_key` field in the `providers` config, so a custom OpenAI-compatible
-endpoint can name its own variable.
+Each built-in provider reads a fixed variable — the pairing is in
+`providers/registry.py` (`REQUIREMENTS`), which is also what the `skipped:` line
+quotes back at you when a provider is unavailable. `llama` reads no key: a local
+endpoint is assumed reachable.
 
 ---
 
@@ -131,12 +132,14 @@ Glob patterns excluded from review. Default: empty.
 
 ```yaml
 providers:
-  claude:   { default: true }
-  codex:    { requires_key: OPENAI_API_KEY }
-  deepseek: { requires_key: DEEPSEEK_API_KEY }
-  llama:    { local: true, endpoint: "http://localhost:11434/v1" }
-  on_failure: fallback          # fallback (to Claude) | hard_fail
+  claude:   { default: true }     # exactly one provider may carry default: true
+  on_failure: fallback            # fallback (to Claude) | hard_fail
 ```
+
+Built-in names: `claude`, `claude-cli`, `codex`, `deepseek`, `llama`. Only two
+keys here are read — `default:` on a provider, and `on_failure:`. Endpoints,
+models and key variables are fixed per provider in `providers/registry.py`; there
+is no config surface for them yet.
 
 Default: `{claude: {default: true}}`. Resolution order is
 session → CLI (`--model`) → repo → operator → the Claude default. An unavailable
