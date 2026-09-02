@@ -4,6 +4,7 @@ Static-tool messages arrive as full paragraphs (semgrep's run to a couple of
 hundred characters), so the renderer has to fit them to the terminal without
 mangling the layout or losing the detail SARIF still needs.
 """
+import os
 from cosmo.findings import Finding, Report
 from cosmo.output import render_cli
 from cosmo.output.cli_text import _fit
@@ -45,10 +46,28 @@ def test_fit_preserves_deliberate_spacing_when_asked():
 
 # --- rendering --------------------------------------------------------------
 
-def test_long_titles_do_not_run_off_the_line():
+def test_long_titles_do_not_run_off_the_line(monkeypatch):
+    import shutil as _shutil
+
+    from cosmo.output.cli_text import _MAX_WIDTH
+    monkeypatch.setattr(_shutil, "get_terminal_size",
+                        lambda fallback=(100, 24): os.terminal_size((100, 24)))
     out = render_cli(_report(title=_LONG), color=False)
-    assert max(len(line) for line in out.splitlines()) <= 120
+    assert max(len(line) for line in out.splitlines()) <= 100
     assert "…" in out
+
+
+def test_a_wide_terminal_is_used_up_to_the_cap(monkeypatch):
+    """The cap bounds a wide window; it must not shrink one. At 120 it threw
+    away half of every message on a 200-column terminal."""
+    import shutil as _shutil
+
+    from cosmo.output.cli_text import _MAX_WIDTH
+    monkeypatch.setattr(_shutil, "get_terminal_size",
+                        lambda fallback=(100, 24): os.terminal_size((240, 60)))
+    out = render_cli(_report(title=_LONG), color=False)
+    longest = max(len(line) for line in out.splitlines())
+    assert 120 < longest <= _MAX_WIDTH
 
 
 def test_the_full_title_is_kept_on_the_finding():

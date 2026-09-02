@@ -10,7 +10,7 @@ import sys
 from .config import load_config
 from .diff import resolve_diff
 from .engine import run_review
-from .output import render_cli, render_pr_comment, render_sarif
+from .output import render_cli, render_pr_comment, render_report, render_sarif
 from .store import TrendStore, map_report
 from .triggers import install_hook, render_hook_output, run_git_hook, run_github_action
 from .waiver import Baseline, fingerprint
@@ -39,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
     p_review.add_argument("--operator-config", help="path to the operator/org config (the ceiling)")
     p_review.add_argument("--no-cache", action="store_true", help="force a full re-scan")
     p_review.add_argument("--no-color", action="store_true")
+    p_review.add_argument("--report", metavar="FILE",
+                          help="write a full Markdown report to FILE: every finding "
+                               "with its evidence, remediation and waive command, "
+                               "untruncated, plus what did not run ('-' for stdout)")
     p_review.add_argument("--record", action="store_true",
                           help="record this scan in the trend store for lifecycle tracking")
 
@@ -108,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
     p_hist.add_argument("--model", choices=["claude", "claude-cli", "codex", "deepseek", "llama"])
     p_hist.add_argument("--threshold", choices=["info", "low", "medium", "high", "critical"])
     p_hist.add_argument("--format", choices=["cli", "sarif"], default="cli")
+    p_hist.add_argument("--report", metavar="FILE",
+                        help="write a full Markdown report to FILE ('-' for stdout)")
     p_hist.add_argument("--live", action="store_true", help="live UI on stderr")
     p_hist.add_argument("--no-color", action="store_true")
     p_hist.add_argument("--operator-config")
@@ -265,6 +271,20 @@ def _cmd_fuzz(args) -> int:
     return 0
 
 
+def _write_report(path: str, text: str) -> None:
+    """Write the Markdown report, or send it to stdout for `-`.
+
+    The path is announced on stderr so it stays out of a piped `--format sarif`
+    stream, and so a `--live` run's last line is where to look next.
+    """
+    if path == "-":
+        print(text)
+        return
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    print(f"wrote report to {path}", file=sys.stderr)
+
+
 def _cmd_review(args) -> int:
     # A local target must exist. (A PR ref 'owner/repo#N' or URL is resolved
     # remotely, so skip the path check for those.) Catches e.g. an unset $VAR
@@ -314,19 +334,22 @@ def _cmd_review(args) -> int:
     # Non-zero exit if any non-waived finding survived the threshold (CI-friendly).
     exit_code = 1 if any(not f.waived for f in report.findings) else 0
     if ui is not None:
-        ui.finish(report, exit_code)
+        ui.finish(report, exit_code, report_path=args.report)
 
-    # With --live the verdict screen already showed the findings on stderr, so
-    # repeating the text report on an attached terminal is just noise. A piped
-    # stdout still gets it — the machine-readable contract is unchanged.
-    live_on_tty = bool(ui) and sys.stdout.isatty()
+    # The verdict screen is a summary — top eight titles, clipped to a column.
+    # It was suppressing the text report on an attached terminal, which left a
+    # --live run with nothing to triage from. Both are printed now: the panel
+    # says how it went, the report says what was found.
     if args.format == "cli":
-        if not live_on_tty:
-            print(render_cli(report, color=not args.no_color))
+        print(render_cli(report, color=not args.no_color))
     elif args.format == "sarif":
         print(render_sarif(report))
     elif args.format == "pr":
         print(render_pr_comment(report))
+
+    if args.report:
+        _write_report(args.report, render_report(
+            report, threshold=config.get("threshold", "") or ""))
 
     # The store is a side layer: run_review stays pure, the CLI records the scan.
     if args.record:
@@ -454,12 +477,13 @@ def _cmd_history(args) -> int:
 
     exit_code = 1 if actionable else 0
     if ui is not None:
-        ui.finish(report, exit_code)
+        ui.finish(report, exit_code, report_path=args.report)
 
-    live_on_tty = bool(ui) and sys.stdout.isatty()
+    # As in `review`: the verdict panel summarises, the text report is the
+    # result. Printing only the panel left --live with nothing to triage from.
     if args.format == "sarif":
         print(render_sarif(report))
-    elif not live_on_tty:
+    else:
         print(render_cli(report, color=not args.no_color))
         print(f"\ncommits reviewed: {sweep.commits_reviewed}"
               + (f" of {sweep.commits_total}+ matched" if sweep.commits_total > sweep.commits_reviewed else "")
@@ -467,6 +491,10 @@ def _cmd_history(args) -> int:
         if sweep.by_status:
             print("still in HEAD: " + ", ".join(
                 f"{n} {s}" for s, n in sorted(sweep.by_status.items())))
+
+    if args.report:
+        _write_report(args.report, render_report(
+            report, threshold=config.threshold))
     return exit_code
 
 

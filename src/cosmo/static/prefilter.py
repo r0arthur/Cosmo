@@ -87,6 +87,40 @@ def _semgrep_remediation(meta: dict, extra: dict) -> str:
     return ""
 
 
+def _semgrep_evidence(check_id: str, meta: dict) -> str:
+    """Triage material for a semgrep hit.
+
+    Deliberately *not* built from `extra.lines` (the matched source): on the OSS
+    engine that field reads "requires login", so a report built on it would show
+    that string instead of code. What is actually present is the rule that fired,
+    semgrep's own grading of it, the full CWE/OWASP text, and the rule's
+    references — which together are enough to decide whether a hit is real
+    without re-running the scanner.
+    """
+    parts: list[str] = []
+    if check_id:
+        parts.append(f"semgrep rule: {check_id}")
+    grades = [f"{k}={meta[k]}" for k in ("confidence", "impact", "likelihood")
+              if meta.get(k)]
+    if grades:
+        parts.append("semgrep rating: " + "  ".join(grades))
+    for key, label in (("cwe", "CWE"), ("owasp", "OWASP")):
+        val = meta.get(key)
+        items = val if isinstance(val, list) else ([val] if val else [])
+        if items:
+            parts.append(f"{label}: " + "; ".join(str(i) for i in items))
+    refs = [meta.get("shortlink"), meta.get("source-rule-url")]
+    refs += list(meta.get("references") or [])
+    seen: set[str] = set()
+    for ref in refs:
+        if ref and str(ref) not in seen:
+            seen.add(str(ref))
+            parts.append(str(ref))
+        if len(seen) >= 4:
+            break
+    return "\n".join(parts)
+
+
 def _run_semgrep(root: str, ev=None, skipped: list[str] | None = None) -> list[Finding]:
     out = _sh(["semgrep", "--config", "auto", "--json", "--quiet", root], ev)
     data = json.loads(out or "{}")
@@ -107,7 +141,7 @@ def _run_semgrep(root: str, ev=None, skipped: list[str] | None = None) -> list[F
                 confidence=0.7,
                 confirmation_status=ConfirmationStatus.UNCONFIRMED,
                 category=str(cwe) if cwe else None,
-                evidence=r.get("check_id", ""),
+                evidence=_semgrep_evidence(r.get("check_id", ""), meta),
                 remediation=_semgrep_remediation(meta, extra),
                 # Semgrep security rules are security-relevant, but "sensitive enough
                 # to withhold publicly" is decided at the gate by severity+status.
@@ -115,6 +149,54 @@ def _run_semgrep(root: str, ev=None, skipped: list[str] | None = None) -> list[F
             )
         )
     return findings
+
+
+def _redact(secret: str, *, inline: bool = False) -> str:
+    """Enough of a credential to recognise it, never enough to use it.
+
+    A report is a file on disk that gets attached to tickets and pasted into
+    chat. Copying the secret into it verbatim mints a second live copy of the
+    thing the finding says to rotate — but a bare "a secret is here" is not
+    triageable either: the `phc_` prefix on a PostHog key is what tells an
+    operator it is public by design.
+    """
+    s = str(secret or "")
+    if len(s) <= 12:
+        return f"<redacted, {len(s)} chars>"
+    stub = f"{s[:6]}…{s[-4:]}"
+    # Inside a quoted match line the length would land inside the quotes and
+    # read as part of the value, so it is only appended when standing alone.
+    return stub if inline else f"{stub} ({len(s)} chars)"
+
+
+def _gitleaks_evidence(row: dict) -> str:
+    """What the operator needs to judge a leak without re-running gitleaks."""
+    parts = [f"gitleaks rule: {row.get('RuleID', 'unknown')}"]
+    if row.get("Description"):
+        parts.append(str(row["Description"]))
+    secret = str(row.get("Secret") or "")
+    match = " ".join(str(row.get("Match") or "").split())
+    if match:
+        # Keep the surrounding line — the variable name is often the whole
+        # answer — with the credential itself replaced.
+        if secret:
+            match = match.replace(secret, _redact(secret, inline=True))
+        parts.append(f"match: {match[:200]}")
+    elif secret:
+        parts.append(f"secret: {_redact(secret)}")
+    if row.get("Entropy"):
+        parts.append(f"entropy: {row['Entropy']}")
+    commit = str(row.get("Commit") or "")
+    if commit:
+        who = str(row.get("Author") or "").strip()
+        when = str(row.get("Date") or "").strip()
+        where = f"in commit {commit[:12]}"
+        if who:
+            where += f" by {who}"
+        if when:
+            where += f" on {when}"
+        parts.append(f"found {where}")
+    return "\n".join(parts)
 
 
 def _gitleaks_scan(root: str, mode_args: list[str], tag: str, ev=None,
@@ -169,14 +251,18 @@ def _run_gitleaks(root: str, ev=None, skipped: list[str] | None = None) -> list[
                 ev.stage_skipped("static", note)
 
     # The passes overlap on any secret that is both committed and still on disk.
-    seen: set[tuple] = set()
-    unique: list[dict] = []
+    # Keep the richer row: the working-tree pass runs first but reports no
+    # commit, so dropping the later duplicate would throw away the one piece of
+    # provenance that says when the secret entered the repo.
+    merged: dict[tuple, dict] = {}
     for r in rows:
         key = (r.get("RuleID"), r.get("File"), r.get("StartLine"))
-        if key not in seen:
-            seen.add(key)
-            unique.append(r)
-    rows = unique
+        prior = merged.get(key)
+        if prior is None:
+            merged[key] = r
+        elif not prior.get("Commit") and r.get("Commit"):
+            merged[key] = {**r, "File": prior.get("File", r.get("File"))}
+    rows = list(merged.values())
     findings: list[Finding] = []
     for i, r in enumerate(rows or []):
         findings.append(
@@ -190,7 +276,7 @@ def _run_gitleaks(root: str, ev=None, skipped: list[str] | None = None) -> list[
                 confidence=0.9,
                 confirmation_status=ConfirmationStatus.UNCONFIRMED,
                 category="CWE-798",  # use of hard-coded credentials
-                evidence=r.get("Description", ""),
+                evidence=_gitleaks_evidence(r),
                 remediation="Rotate the exposed secret and remove it from the repo/history.",
                 security_sensitive=True,  # a live secret → gate must withhold public detail
             )

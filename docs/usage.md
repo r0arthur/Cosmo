@@ -79,6 +79,7 @@ trigger.
 | `--operator-config` | path | `$COSMO_OPERATOR_CONFIG` | The trusted ceiling |
 | `--no-cache` | flag | `false` | Force a full re-scan |
 | `--no-color` | flag | `false` | Disable ANSI colour |
+| `--report` | path or `-` | — | Write a full Markdown report to a file (`-` = stdout) |
 | `--record` | flag | `false` | Record this scan in the trend store |
 
 ### Examples
@@ -93,6 +94,7 @@ cosmo review . --format sarif > cosmo.sarif     # SARIF for a Security tab
 cosmo review . --format pr                      # preview the GATED comment
 cosmo review . --no-cache                       # ignore the incremental cache
 cosmo review . --record                         # also store for trend tracking
+cosmo review . --report cosmo-report.md         # full Markdown report on disk
 cosmo review . --live                           # watch it run
 cosmo review . --verbose                        # plain progress lines instead
 cosmo review ./app --audit --model claude-cli   # AI-audit every file
@@ -102,6 +104,10 @@ cosmo review . --operator-config /etc/cosmo/op.yaml
 
 Combining `--live` with `--verbose` is accepted, but `--live` wins — the plain
 progress stream would corrupt the UI's repaints, so it is suppressed.
+
+`--live` draws a summary panel on stderr; the text report still goes to stdout
+after it. The panel shows the top eight findings clipped to a column, so for
+anything you intend to triage from, add `--report FILE`.
 
 ### Output — `--format cli`
 
@@ -158,6 +164,75 @@ become `rules`:
   ]
 }
 ```
+
+### Output — `--report FILE` (the full report)
+
+The renderers above are bounded by a terminal or a schema. `--report` is not: it
+writes every field each finding carries, untruncated, as Markdown. Coverage
+comes first, so the reader sees what did **not** run before any finding count.
+
+```markdown
+# cosmo security report
+
+- **Target:** `/repo`
+- **Generated:** 2026-09-02 20:07:12 UTC
+- **Severity floor:** high
+- **Findings:** 2 actionable
+
+## Coverage
+
+What ran and what did not. A finding count is only as strong as the stages behind it.
+
+**2 stage(s) did not run:**
+
+- ⊘ static:dep-audit (stub — not implemented in MVP)
+- ⊘ model:claude (cosmo's default) unavailable — needs ANTHROPIC_API_KEY and the `anthropic` SDK. available now: --model claude-cli
+
+## Summary
+
+| Severity | Count |
+|---|---|
+| high | 2 |
+
+## Findings
+
+### 1. HIGH — Secret leaked: generic-api-key
+
+| | |
+|---|---|
+| **Location** | `lib/posthog.tsx:10` |
+| **Severity** | high |
+| **Source** | `static` |
+| **Confidence** | 90% |
+| **Status** | unconfirmed |
+| **Category** | CWE-798 |
+| **Sensitivity** | sensitive — withheld from public comments |
+| **Fingerprint** | `69f971f46fe06e9f` |
+
+**Evidence**
+
+    gitleaks rule: generic-api-key
+    Generic API Key
+    match: KEY = 'phc_aB…fdxB'
+    entropy: 5.0118275
+
+**Remediation**
+
+    Rotate the exposed secret and remove it from the repo/history.
+
+**If this is a false positive**
+
+    cosmo waive /repo 69f971f46fe06e9f --reason "why"
+```
+
+The secret itself is never written to the report — enough of it is kept to
+recognise (the `phc_` prefix says PostHog, whose client keys are public by
+design), never enough to use. The report is a file that ends up in tickets and
+chat; copying the credential into it would mint a second live copy of the thing
+the finding tells you to rotate.
+
+Paths are shown relative to the target named in the header. Findings are ordered
+severity-descending, then by location.
 
 ### Output — `--format pr` (the fail-closed gate)
 
@@ -233,6 +308,7 @@ cosmo history <target> [options]
 | `--model` | choice | config | Review provider |
 | `--threshold` | choice | config | Severity floor |
 | `--format` | `cli` \| `sarif` | `cli` | Output renderer |
+| `--report` | path or `-` | — | Write a full Markdown report to a file (`-` = stdout) |
 | `--live` | flag | `false` | Live UI on stderr |
 | `--no-color` | flag | `false` | Disable ANSI colour |
 | `--operator-config` | path | env | The trusted ceiling |
