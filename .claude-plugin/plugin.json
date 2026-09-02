@@ -16,6 +16,7 @@
     "./commands/cosmo-baseline.md",
     "./commands/cosmo-scope.md",
     "./commands/cosmo-disclose.md",
-    "./commands/cosmo-report.md"
+    "./commands/cosmo-report.md",
+    "./commands/cosmo-tools.md"
   ]
 }
