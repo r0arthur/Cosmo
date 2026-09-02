@@ -23,7 +23,7 @@ a missing tool is reported under `skipped:` in the report:
 | Optional | Enables | Without it |
 |---|---|---|
 | `semgrep` | static pre-filter | `static:semgrep (not installed)` |
-| `gitleaks` | secret detection | `static:gitleaks (not installed)` |
+| `gitleaks` | secret detection — working tree *and* git history | `static:gitleaks (not installed)` |
 | `claude` CLI, logged in | AI review on your subscription | LLM stage skipped |
 | `anthropic` SDK + `ANTHROPIC_API_KEY` | AI review via API | LLM stage skipped |
 | `gh` CLI, authenticated | GitHub PR review, remote history sweeps | local review still works |
