@@ -131,6 +131,16 @@ pip install semgrep
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+### Why did `cosmo interactive` start scanning on its own?
+
+It no longer does. Opening a session waits for you; `/scan` runs the static
+scanners and `/scan llm` adds the model review. `--scan` / `--scan llm` restore
+scan-on-open if you want it.
+
+It used to scan automatically, and that scan ran the full pipeline — so with a
+provider configured, opening a session sent your code to a vendor before you had
+asked for anything.
+
 ### I pressed Ctrl-Z and cosmo did not exit
 
 Ctrl-Z **suspends**; it does not stop. The run is frozen in the background —

@@ -107,14 +107,21 @@ def _main(argv: list[str] | None = None) -> int:
     p_int = sub.add_parser("interactive", help="live session — same engine, slash-commands")
     p_int.add_argument("target", help="local path or GitHub PR to open a session on")
     p_int.add_argument("--operator-config")
-    p_int.add_argument("--no-scan", action="store_true", help="don't scan on start")
+    p_int.add_argument("--scan", nargs="?", const="static", choices=["static", "llm"],
+                       help="scan on open: 'static' for the scanners only, 'llm' "
+                            "to include the model review. Omitted, the session "
+                            "opens without scanning — use /scan inside it")
+    p_int.add_argument("--no-scan", action="store_true",
+                       help=argparse.SUPPRESS)   # accepted; opening no longer scans
     p_int.add_argument("--plain", action="store_true",
                        help="line-based session instead of the full-screen UI")
 
     p_agent = sub.add_parser("agent", help="natural-language session, harness-agnostic")
     p_agent.add_argument("target", help="local path or GitHub PR to open a session on")
     p_agent.add_argument("--operator-config")
-    p_agent.add_argument("--no-scan", action="store_true", help="don't scan on start")
+    p_agent.add_argument("--scan", nargs="?", const="static", choices=["static", "llm"],
+                         help="scan on open (default: don't; ask in-session)")
+    p_agent.add_argument("--no-scan", action="store_true", help=argparse.SUPPRESS)
 
     p_hist = sub.add_parser("history",
                             help="sweep a repo's commit history for vulnerabilities")
@@ -211,17 +218,26 @@ def _main(argv: list[str] | None = None) -> int:
             print(f"wrote SARIF to {args.sarif}")
         return code
     if args.cmd == "interactive":
+        problem = _missing_target(args.target)
+        if problem:
+            print(problem)
+            return 2
         from .interactive import run_repl
         run_repl(args.target, operator_config=args.operator_config,
-                 autoscan=not args.no_scan, plain=args.plain)
+                 scan_on_open=args.scan, plain=args.plain)
         return 0
     if args.cmd == "agent":
         # Model-agnostic orchestration. The planner is resolved from config: a
         # live provider (Claude/Codex/DeepSeek/local Llama) when one is available
         # and allowed by the §8 gate, otherwise the no-model rule-based planner —
         # so it runs out of the box either way.
+        problem = _missing_target(args.target)
+        if problem:
+            print(problem)
+            return 2
         from .interactive import run_agent
-        run_agent(args.target, operator_config=args.operator_config, autoscan=not args.no_scan)
+        run_agent(args.target, operator_config=args.operator_config,
+                  scan_on_open=args.scan)
         return 0
     if args.cmd == "fuzz":
         return _cmd_fuzz(args)
@@ -306,6 +322,20 @@ def _cmd_fuzz(args) -> int:
           "toolchain; run via cosmo.fuzz.run_campaign with a fuzz_runner wired to "
           "the sandbox (§6). No external target is reachable from this command.")
     return 0
+
+
+def _missing_target(target: str) -> str | None:
+    """The same existence check `review` makes, for the session commands.
+
+    Without it `cosmo interactive /typo` opened a session on nothing: scans
+    returned zero findings and the scanners failed against a path that was not
+    there, which reads as "your code is clean".
+    """
+    is_remote = "#" in target or target.startswith("http")
+    if not is_remote and not _osp.exists(target):
+        return (f"error: target path does not exist: {target!r}\n"
+                f"(for a GitHub PR use 'owner/repo#123' or a pull-request URL)")
+    return None
 
 
 def _write_report(path: str, text: str) -> None:
