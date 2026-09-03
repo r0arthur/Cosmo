@@ -597,3 +597,69 @@ def test_findsecbugs_finds_a_jar_when_there_is_no_class_dir(tmp_path):
     (tmp_path / "target").mkdir()
     (tmp_path / "target" / "app.jar").write_bytes(b"PK\x03\x04")
     assert runners._bytecode_roots(tmp_path) == [str(tmp_path / "target" / "app.jar")]
+
+
+# --- interrupting a scan ----------------------------------------------------
+
+def test_a_running_scanner_is_tracked_and_released():
+    """`terminate_running_scanners` can only reach what `_sh` registered."""
+    from cosmo.static import runners
+
+    assert runners._sh(["true"]) == ""
+    assert not runners._running, "a finished scanner stayed in the registry"
+
+
+def test_terminate_signals_the_whole_process_group(monkeypatch):
+    """`proc.terminate()` reaches only the direct child. semgrep's launcher
+    spawns semgrep-core, which survived Ctrl-C and outlived cosmo."""
+    import signal as _signal
+
+    from cosmo.static import runners
+
+    signalled = []
+
+    class _Proc:
+        pid = 4242
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(runners.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(runners.os, "killpg",
+                        lambda pgid, sig: signalled.append((pgid, sig)))
+    monkeypatch.setattr(runners, "_running", {_Proc()})
+    assert runners.terminate_running_scanners(grace=0.01) == 1
+    assert signalled == [(4242, _signal.SIGTERM)]
+
+
+def test_a_scanner_ignoring_sigterm_is_killed(monkeypatch):
+    """A scanner that will not stop would keep the pool waiting forever."""
+    import signal as _signal
+
+    from cosmo.static import runners
+
+    signalled = []
+
+    class _Stubborn:
+        pid = 99
+
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired("scanner", timeout or 0)
+
+    monkeypatch.setattr(runners.os, "getpgid", lambda pid: pid)
+    monkeypatch.setattr(runners.os, "killpg",
+                        lambda pgid, sig: signalled.append(sig))
+    monkeypatch.setattr(runners, "_running", {_Stubborn()})
+    runners.terminate_running_scanners(grace=0.01)
+    assert signalled == [_signal.SIGTERM, _signal.SIGKILL]
+
+
+def test_a_timed_out_scanner_is_not_left_running():
+    """communicate() leaves the child alive on timeout; the scan would finish
+    with an orphan still working."""
+    from cosmo.static import runners
+
+    with pytest.raises(subprocess.TimeoutExpired) as exc:
+        runners._sh(["sleep", "10"], timeout=0.3)
+    assert exc.value.timeout == 0.3
+    assert not runners._running
