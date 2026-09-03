@@ -1,9 +1,13 @@
-"""Interactive REPL loop (architecture §7).
+"""Interactive session entry point (architecture §7).
 
-Streams a session: read a line, dispatch a command (or run/refine a scan),
-print, repeat. Kept I/O-injectable (`read`/`write`) so the loop is exercised in
-tests without a tty. This is orchestration only — all behavior lives in
-`commands.dispatch` over the shared `Session`.
+On a terminal this hands off to the full-screen UI in `screen.py`. Everywhere
+else — a pipe, CI, the test suite — it runs the line-based loop below, which
+stays the reference implementation of a session: read a line, dispatch, print,
+repeat, with `read`/`write` injectable so the loop is exercised without a tty.
+
+Either way this is orchestration only. All behaviour lives in
+`commands.dispatch` over the shared `Session`, so the two front ends cannot
+diverge on what a command is allowed to do.
 """
 from __future__ import annotations
 
@@ -24,9 +28,19 @@ def run_repl(
     read: Callable[[str], str] = input,
     write: Callable[[str], None] = print,
     autoscan: bool = True,
+    plain: bool = False,
 ) -> Session:
     config = load_config(target if _is_local(target) else ".", operator_config=operator_config)
     session = Session(config=config, target=target)
+
+    # On a real terminal the session is full-screen. Everywhere else — a pipe,
+    # CI, the test suite — this line-based loop stays the reference
+    # implementation, and `--plain` forces it on a terminal too.
+    if not plain and read is input and write is print:
+        from .screen import run_screen, usable
+        if usable():
+            return run_screen(session, autoscan=autoscan)
+
     session.writer = write   # so /audit can stream progress live as it runs
     write(_BANNER)
     if autoscan:
