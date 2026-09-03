@@ -14,10 +14,15 @@ memory. If you spot one that has changed, please open an issue.
 ## Static scanners
 
 cosmo executes these as ordinary subprocesses on your machine. It does not
-bundle, vendor, link against, or redistribute any of them — you install them
-yourself, and cosmo finds them on your `PATH`. The one hard rule cosmo keeps is
-that a tool which is absent is *reported* as absent rather than quietly leaving
-a hole in the scan.
+bundle, vendor, link against, or redistribute any of them. Two of the seven
+(`semgrep`, `bandit`) install via `pip`; for the other five, `cosmo tools
+--install` (and `scripts/install.sh`, automatically) can fetch each one's
+binary release directly from the project's own GitHub — your machine pulling
+from the upstream project, the same act as running `pip install semgrep`
+yourself, just automated. Nothing passes through cosmo's own distribution
+either way, and every tool cosmo finds on `PATH`, however it got there, is
+attributed the same. The one hard rule cosmo keeps is that a tool which is
+absent is *reported* as absent rather than quietly leaving a hole in the scan.
 
 | Tool | Project | Maintainers | License |
 |---|---|---|---|

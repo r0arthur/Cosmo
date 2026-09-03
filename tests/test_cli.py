@@ -184,3 +184,129 @@ def test_interactive_rejects_a_target_that_does_not_exist(capsys):
 def test_agent_rejects_a_target_that_does_not_exist(capsys):
     assert main(["agent", "/no/such/path/really-xyz"]) == 2
     assert "does not exist" in capsys.readouterr().out
+
+
+# --- `cosmo tools --install` -------------------------------------------------
+
+def test_install_unknown_tool_is_rejected(capsys):
+    """semgrep/bandit come from pip, not a GitHub release — asking to fetch
+    them here should say so, not silently do nothing."""
+    code = main(["tools", "--install", "semgrep"])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "semgrep" in err
+    assert "pip install" in err
+
+
+def test_install_fetches_named_tools(monkeypatch, tmp_path, capsys):
+    from cosmo import bootstrap
+
+    calls = []
+
+    def fake_install(name, *, bindir, toolsdir):
+        calls.append((name, bindir, toolsdir))
+        return bootstrap.InstallResult(name, True, path=str(bindir / name),
+                                       verified=True)
+
+    monkeypatch.setattr(bootstrap, "install", fake_install)
+    bindir = tmp_path / "bin"
+    code = main(["tools", "--install", "gitleaks", "trivy",
+                "--bindir", str(bindir), "--toolsdir", str(tmp_path / "tools")])
+    assert code == 0
+    assert [c[0] for c in calls] == ["gitleaks", "trivy"]
+    err = capsys.readouterr().err
+    assert "gitleaks" in err and "trivy" in err
+
+
+def test_install_with_no_names_installs_everything_fetchable(monkeypatch, tmp_path):
+    from cosmo import bootstrap
+
+    seen = []
+    monkeypatch.setattr(bootstrap, "install",
+                        lambda name, **kw: seen.append(name) or
+                        bootstrap.InstallResult(name, True, path="x", verified=True))
+    main(["tools", "--install", "--bindir", str(tmp_path / "bin"),
+         "--toolsdir", str(tmp_path / "tools")])
+    assert set(seen) == set(bootstrap.INSTALLERS)
+
+
+def test_install_reports_a_platform_it_cannot_fetch_for(monkeypatch, tmp_path, capsys):
+    from cosmo import bootstrap
+
+    monkeypatch.setattr(bootstrap, "install",
+                        lambda name, **kw: bootstrap.InstallResult(
+                            name, False, note="unsupported OS: Windows"))
+    code = main(["tools", "--install", "gitleaks",
+                "--bindir", str(tmp_path / "bin"), "--toolsdir", str(tmp_path / "tools")])
+    assert code == 0                              # not fetchable here is not a failure
+    assert "unsupported OS" in capsys.readouterr().err
+
+
+def test_install_failure_exits_nonzero_and_continues_past_it(monkeypatch, tmp_path, capsys):
+    """One tool's checksum mismatch or network error must not stop the rest."""
+    from cosmo import bootstrap
+
+    def fake_install(name, *, bindir, toolsdir):
+        if name == "trivy":
+            raise bootstrap.BootstrapError("checksum mismatch")
+        return bootstrap.InstallResult(name, True, path="x", verified=True)
+
+    monkeypatch.setattr(bootstrap, "install", fake_install)
+    code = main(["tools", "--install", "trivy", "gitleaks",
+                "--bindir", str(tmp_path / "bin"), "--toolsdir", str(tmp_path / "tools")])
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "checksum mismatch" in err
+    assert "gitleaks" in err                       # still attempted
+
+
+def test_install_marks_an_unverified_result(monkeypatch, tmp_path, capsys):
+    from cosmo import bootstrap
+
+    monkeypatch.setattr(bootstrap, "install",
+                        lambda name, **kw: bootstrap.InstallResult(
+                            name, True, path="x", verified=False,
+                            note="no checksum published for this asset"))
+    main(["tools", "--install", "opengrep",
+         "--bindir", str(tmp_path / "bin"), "--toolsdir", str(tmp_path / "tools")])
+    err = capsys.readouterr().err
+    assert "unverified" in err
+    assert "no checksum published" in err
+
+
+def test_install_notes_when_bindir_is_not_on_path(monkeypatch, tmp_path, capsys):
+    from cosmo import bootstrap
+    monkeypatch.setattr(bootstrap, "install",
+                        lambda name, **kw: bootstrap.InstallResult(
+                            name, True, path="x", verified=True))
+    monkeypatch.delenv("PATH", raising=False)
+    bindir = tmp_path / "not-on-path"
+    main(["tools", "--install", "gitleaks", "--bindir", str(bindir),
+         "--toolsdir", str(tmp_path / "tools")])
+    err = capsys.readouterr().err
+    assert str(bindir) in err
+    assert "export PATH" in err
+
+
+def test_default_bindir_honors_prefix(monkeypatch):
+    import cosmo.cli as cli
+    monkeypatch.setenv("PREFIX", "/opt/example")
+    assert cli._default_bindir() == cli.Path("/opt/example/bin")
+    assert cli._default_toolsdir() == cli.Path("/opt/example/share/cosmo/tools")
+
+
+def test_default_bindir_falls_back_to_home_local(monkeypatch):
+    import cosmo.cli as cli
+    monkeypatch.delenv("PREFIX", raising=False)
+    assert cli._default_bindir() == cli.Path.home() / ".local" / "bin"
+
+
+def test_missing_scanner_hint_mentions_install_when_fetchable(monkeypatch, capsys):
+    """A scanner cosmo can fetch itself should say so right where it names the
+    gap — not just leave the operator to discover `--install` separately."""
+    from cosmo.versions import Status
+    _stub_tools(monkeypatch,
+                Status(name="trivy", installed=False, state="missing",
+                       covers="CVEs", install="https://example.invalid"))
+    main(["tools"])
+    assert "cosmo tools --install" in capsys.readouterr().out
