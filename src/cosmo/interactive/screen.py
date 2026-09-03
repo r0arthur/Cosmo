@@ -198,7 +198,6 @@ class App:
     session: Session
     term: Terminal
     view: str = FINDINGS
-    sel: int = 0                     # selected finding
     top: int = 0                     # first visible row of the list
     text: str = ""                   # what is typed on the command line
     caret: int = 0
@@ -216,13 +215,22 @@ class App:
 
     # --- data ---------------------------------------------------------------
 
+    # The selection *is* the session cursor. `/next` and `↓` move one value, so
+    # a command and an arrow key can never disagree about which finding is
+    # current — which they would the moment the screen kept its own index.
+    @property
+    def sel(self) -> int:
+        return self.session.cursor
+
+    @sel.setter
+    def sel(self, value: int) -> None:
+        self.session.cursor = value
+
     def findings(self) -> list[Finding]:
-        items = self.session.snapshot_findings()
-        return sorted(items, key=lambda f: (-int(f.severity), f.file, f.line))
+        return self.session.ordered_findings()
 
     def selected(self) -> Finding | None:
-        items = self.findings()
-        return items[self.sel] if 0 <= self.sel < len(items) else None
+        return self.session.current_finding()
 
     def note(self, message: str) -> None:
         self.status = message
@@ -344,10 +352,19 @@ class App:
     def _run(self, line: str) -> None:
         self.note(f"running {line} …")
         self._paint()
+        was_at = self.session.cursor
         try:
             result = dispatch(self.session, line)
         except Exception as exc:                # a command must not kill the UI
             result = f"error: {exc}"
+        if self.session.cursor != was_at:
+            # A command that moved the cursor (`/next`, `/previous`) is a
+            # navigation gesture, so land on the finding rather than on a page
+            # of text describing it. Detected by the move, not by the command's
+            # name, so anything else that navigates behaves the same way.
+            self.view = DETAIL
+            self.status = ""
+            return
         self.show(line, result)
 
     def show(self, title: str, body: str) -> None:
@@ -489,9 +506,12 @@ class App:
         if f is None:
             return ["", "  nothing selected"]
         color = SEVERITY_COLOR.get(str(f.severity), "white")
-        out = [""]
-        out += [f"  {self._c(str(f.severity).upper(), color)}  {t}"
-                for t in wrap(f.title, inner - 14)[:3]]
+        # The badge belongs to the finding, not to each line of its title —
+        # repeating it down the wrap read as three separate HIGH findings.
+        sev = str(f.severity).upper()
+        wrapped = wrap(f.title, inner - len(sev) - 8)[:4]
+        out = ["", f"  {self._c(sev, color)}  {wrapped[0]}"]
+        out += [f"  {' ' * len(sev)}  {line}" for line in wrapped[1:]]
         out.append("")
         for label, value in (("location", f"{f.file}:{f.line}"),
                              ("source", f.source),
@@ -536,7 +556,7 @@ class App:
         if self.view == OUTPUT:
             keys = "↑↓ scroll · esc back · /help · ^C quit"
         elif self.view == DETAIL:
-            keys = "↑↓ next finding · esc back · /waive · ^C quit"
+            keys = "↑↓ /next /previous · esc back · /waive · ^C quit"
         else:
             keys = ("↑↓ select · ⏎ detail · tab complete · ^P history · "
                     "/help · ^C quit")
