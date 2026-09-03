@@ -15,11 +15,15 @@ Which of these run, and how their absence is reported, is `prefilter.py`.
 from __future__ import annotations
 
 import json
+import os
 import os.path
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 from ..findings import ConfirmationStatus, Finding
@@ -39,11 +43,82 @@ BANDIT_TIMEOUT = 300
 TRIVY_TIMEOUT = 600      # generous: a cold run downloads a vulnerability DB
 
 
+# Every scanner process currently in flight. A scan runs several at once, each
+# in a worker thread blocked reading its child's output — and Ctrl-C is
+# delivered to the *main* thread only, so without a way to reach these the
+# interrupt lands, the pool's shutdown waits for the workers, and cosmo appears
+# to hang behind a semgrep run that has minutes left.
+_running: set[subprocess.Popen] = set()
+_running_lock = threading.Lock()
+
+
+# After SIGTERM, how long a scanner gets to wind down before it is killed. Short:
+# this path only runs when the operator has already decided to abandon the scan.
+TERMINATE_GRACE = 2.0
+
+
+def _signal_group(proc: subprocess.Popen, sig: int) -> None:
+    """Signal a scanner *and everything it spawned*.
+
+    `proc.terminate()` reaches only the direct child, which is not enough:
+    semgrep's launcher spawns `semgrep-core`, and on Ctrl-C that grandchild
+    survived, outlived cosmo, and carried on burning CPU after the process the
+    operator interrupted was gone. Each scanner is therefore started in its own
+    process group (`start_new_session`) so the whole group can be signalled.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except (OSError, AttributeError):
+        # Already reaped, or a platform without process groups.
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+
+
+def terminate_running_scanners(grace: float = TERMINATE_GRACE) -> int:
+    """Stop every scanner in flight, and everything it spawned.
+
+    Returns how many were signalled. Called when the run is being abandoned
+    (Ctrl-C): stopping the children is what lets the worker threads return,
+    which is what lets the pool shut down instead of appearing to hang.
+    """
+    with _running_lock:
+        procs = list(_running)
+    for proc in procs:
+        _signal_group(proc, signal.SIGTERM)
+    # A scanner that ignores SIGTERM would keep the pool waiting forever, so the
+    # grace period is bounded and then it is killed.
+    deadline = time.monotonic() + grace
+    for proc in procs:
+        try:
+            proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            _signal_group(proc, signal.SIGKILL)
+    return len(procs)
+
+
 def _sh(cmd: list[str], ev=None, timeout: int | None = None) -> str:
     if ev is not None:
         ev.execute(cmd, stage="static")
     # These scanners exit non-zero when they find issues; don't raise on that.
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    # Popen rather than subprocess.run so the child is reachable while it runs.
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, start_new_session=True)
+    with _running_lock:
+        _running.add(proc)
+    try:
+        out, _ = proc.communicate(timeout=timeout)
+        return out or ""
+    except subprocess.TimeoutExpired:
+        # communicate() leaves the child running on timeout; kill the whole
+        # group and reap, or the scan finishes with an orphan still working.
+        _signal_group(proc, signal.SIGKILL)
+        proc.communicate()
+        raise
+    finally:
+        with _running_lock:
+            _running.discard(proc)
 
 
 def _semgrep_remediation(meta: dict, extra: dict) -> str:

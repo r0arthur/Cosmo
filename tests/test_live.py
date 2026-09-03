@@ -271,3 +271,74 @@ def test_a_long_path_does_not_squeeze_the_finding_title(monkeypatch):
     out = _ui()._final(Report(target=".", findings=[f], skipped_stages=[], notes=[]), 1)
     assert title in out
     assert "app.py:3" in out            # the identifying tail survives the clip
+
+
+# --- surviving Ctrl-Z -------------------------------------------------------
+
+def _tty_ui(monkeypatch):
+    """A LiveUI that believes it is on a terminal, writing to a buffer."""
+    ui = _ui()
+    ui._tty = True
+    return ui
+
+
+def test_suspend_restores_the_cursor_before_stopping(monkeypatch):
+    """The live view runs with the cursor hidden. SIGTSTP freezes the process
+    where it stands, so without this the shell prompt returns with no cursor."""
+    import signal as _signal
+
+    import cosmo.live as live
+
+    ui = _tty_ui(monkeypatch)
+    stopped = []
+    monkeypatch.setattr(live.os, "kill", lambda pid, sig: stopped.append(sig))
+    monkeypatch.setattr(live.signal, "signal", lambda sig, h: None)
+
+    ui._on_suspend(_signal.SIGTSTP, None)
+    out = ui._out.getvalue()
+    assert "\033[?25h" in out                       # cursor handed back
+    assert stopped == [_signal.SIGTSTP]             # then actually suspends
+
+
+def test_resume_rehides_the_cursor_and_redraws_from_scratch(monkeypatch):
+    """The old panel is scrolled away; cursor-up arithmetic against it would
+    corrupt whatever is on screen now."""
+    import signal as _signal
+
+    import cosmo.live as live
+
+    ui = _tty_ui(monkeypatch)
+    ui._drawn = 20
+    monkeypatch.setattr(live.signal, "signal", lambda sig, h: None)
+
+    ui._on_resume(_signal.SIGCONT, None)
+    assert ui._drawn == 0
+    assert "\033[?25l" in ui._out.getvalue()
+
+
+def test_a_second_ctrl_z_still_restores_the_cursor(monkeypatch):
+    """A stop signal aimed at an orphaned process group is discarded, so the
+    kill can be a no-op and execution continues — leaving SIGTSTP at SIG_DFL
+    and the next Ctrl-Z unable to restore anything."""
+    import signal as _signal
+
+    import cosmo.live as live
+
+    ui = _tty_ui(monkeypatch)
+    armed = []
+    monkeypatch.setattr(live.os, "kill", lambda pid, sig: None)   # discarded
+    monkeypatch.setattr(live.signal, "signal",
+                        lambda sig, h: armed.append((sig, h)))
+
+    ui._on_suspend(_signal.SIGTSTP, None)
+    # SIG_DFL first, then the handler put back by the resume path.
+    assert armed[0] == (_signal.SIGTSTP, _signal.SIG_DFL)
+    assert armed[-1] == (_signal.SIGTSTP, ui._on_suspend)
+
+
+def test_handlers_are_not_installed_off_a_terminal():
+    """Nothing to protect when there is no cursor being hidden."""
+    ui = _ui()                       # StringIO — not a tty
+    ui.start()
+    assert ui._prev_tstp is None and ui._prev_cont is None
+    ui.finish()
