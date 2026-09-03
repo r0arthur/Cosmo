@@ -411,3 +411,66 @@ def test_status_names_an_unavailable_provider(tmp_path, monkeypatch):
     assert "unavailable" in line
     assert "ANTHROPIC_API_KEY" in line
     assert "model: model:" not in line        # the prefix is not doubled
+
+
+# --- /next and /previous ----------------------------------------------------
+
+def _walkable(tmp_path, n=5):
+    from cosmo.severity import Severity
+    s = _session(tmp_path)
+    s.findings = [
+        Finding(id=f"f{i}", title=f"issue {i}",
+                severity=Severity.HIGH if i < 2 else Severity.LOW,
+                source="static:semgrep", file=f"a{i}.py", line=i,
+                fingerprint=f"fp{i}", category="CWE-78")
+        for i in range(n)]
+    return s
+
+
+def test_next_and_previous_walk_the_list(tmp_path):
+    s = _walkable(tmp_path)
+    assert dispatch(s, "/next").startswith("[2/5]")
+    assert dispatch(s, "/next").startswith("[3/5]")
+    assert dispatch(s, "/previous").startswith("[2/5]")
+
+
+def test_a_step_count_is_accepted(tmp_path):
+    s = _walkable(tmp_path)
+    assert dispatch(s, "/next 3").startswith("[4/5]")
+    assert dispatch(s, "/previous 2").startswith("[2/5]")
+
+
+def test_walking_past_the_end_says_so_rather_than_repeating_silently(tmp_path):
+    s = _walkable(tmp_path)
+    dispatch(s, "/next 99")
+    out = dispatch(s, "/next")
+    assert "already at the last" in out
+    dispatch(s, "/previous 99")
+    assert "already at the first" in dispatch(s, "/previous")
+
+
+def test_a_bad_step_count_is_rejected_not_guessed(tmp_path):
+    assert "not a number" in dispatch(_walkable(tmp_path), "/next two")
+
+
+def test_walking_an_empty_session_is_harmless(tmp_path):
+    out = dispatch(_session(tmp_path), "/next")
+    assert "no findings" in out
+
+
+def test_the_finding_is_shown_in_full_with_its_waive_command(tmp_path):
+    """`/next` exists to be acted on, not scanned — unlike a list row, nothing
+    is trimmed and the waive command is right there."""
+    s = _walkable(tmp_path)
+    out = dispatch(s, "/next")
+    for expected in ("a1.py:1", "static:semgrep", "CWE-78", "fingerprint",
+                     "/waive fp1"):
+        assert expected in out, expected
+
+
+def test_severity_orders_the_walk(tmp_path):
+    """`/next` and the screen's ↓ must agree, so both use one ordering."""
+    s = _walkable(tmp_path)
+    order = [f.id for f in s.ordered_findings()]
+    assert order[:2] == ["f0", "f1"]          # the two HIGHs first
+    assert set(order[2:]) == {"f2", "f3", "f4"}
