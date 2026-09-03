@@ -17,8 +17,9 @@ from ..config import load_config
 from .commands import dispatch
 from .session import Session
 
-_BANNER = ("cosmo interactive — same engine as batch mode. /help for commands, "
-           "/status for state, blank line or /quit to exit.")
+_BANNER = ("cosmo interactive — same engine as batch mode. /scan to run the "
+           "scanners, /scan llm to include the model. /help for commands, "
+           "blank line or /quit to exit.")
 
 
 def run_repl(
@@ -27,7 +28,7 @@ def run_repl(
     operator_config: str | None = None,
     read: Callable[[str], str] = input,
     write: Callable[[str], None] = print,
-    autoscan: bool = True,
+    scan_on_open: str | None = None,
     plain: bool = False,
 ) -> Session:
     config = load_config(target if _is_local(target) else ".", operator_config=operator_config)
@@ -39,12 +40,12 @@ def run_repl(
     if not plain and read is input and write is print:
         from .screen import run_screen, usable
         if usable():
-            return run_screen(session, autoscan=autoscan)
+            return run_screen(session, scan_on_open=scan_on_open)
 
     session.writer = write   # so /audit can stream progress live as it runs
     write(_BANNER)
-    if autoscan:
-        report = session.scan()
+    if scan_on_open:
+        report = session.scan(llm=scan_on_open == "llm")
         write(f"initial scan: {len(report.findings)} finding(s) "
               f"at threshold {session.effective_threshold()}")
 
