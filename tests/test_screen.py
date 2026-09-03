@@ -133,7 +133,21 @@ def test_navigation_on_an_empty_list_is_harmless():
     app.handle(DOWN)
     app.handle(END)
     assert app.sel == 0
-    assert "no findings" in strip("\n".join(_frame(app)))
+
+
+def test_an_unscanned_session_says_how_to_start():
+    """"no findings" before anything has run is the most misleading thing this
+    screen could say, and it is the first thing a new user sees."""
+    body = strip("\n".join(_frame(_app([]))))
+    assert "nothing scanned yet" in body
+    assert "/scan" in body and "/scan llm" in body
+    assert "nothing leaves the machine" in body      # says what each one costs
+
+
+def test_a_scanned_but_empty_session_says_so_instead():
+    app = _app([])
+    app.session.scanned = True
+    assert "no findings at this floor" in strip("\n".join(_frame(app)))
 
 
 def test_the_view_scrolls_to_keep_the_selection_on_screen():

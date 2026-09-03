@@ -43,3 +43,33 @@ def test_injected_provider_findings_flow_through(tmp_path, monkeypatch):
     assert "Command injection" in titles
     # Fingerprint got stamped by the waiver stage.
     assert all(f.fingerprint for f in report.findings)
+
+
+def test_static_only_never_reaches_the_model(tmp_path):
+    """`/scan` (without `llm`) must not send anything to a provider — and must
+    say it did not, rather than blaming a missing key."""
+    from cosmo.config import Config
+    from cosmo.engine import run_review
+
+    (tmp_path / "app.py").write_text("import os\nos.system(cmd)\n")
+    calls = []
+
+    class _Provider:
+        name = "fake"
+        vendor = "local"
+        exports_source = True
+        roles = {"primary_review"}
+
+        def available(self):
+            return True
+
+        def review(self, diff, context, findings_so_far):
+            calls.append(1)
+            return []
+
+    cfg = Config(data={"incremental": {"enabled": False}})
+    report = run_review(str(tmp_path), cfg, provider=_Provider(), static_only=True)
+    assert calls == []
+    reason = next(s for s in report.skipped_stages if "model review" in s)
+    assert "not requested" in reason
+    assert "unavailable" not in reason      # it was available; we did not ask
