@@ -23,7 +23,7 @@ finding is disclosed publicly or waived automatically without evidence.
 ```bash
 git clone git@github.com:r0arthur/Cosmo.git
 cd Cosmo
-make install          # venv + semgrep + bandit + a `cosmo` on your PATH
+make install          # cosmo + all seven static scanners on your PATH
 ```
 
 ```bash
