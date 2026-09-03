@@ -325,3 +325,54 @@ def test_the_tui_can_be_switched_off_by_environment(monkeypatch):
             return 1
 
     assert usable(_Tty()) is False
+
+
+# --- the selection and the commands share one cursor ------------------------
+
+def test_arrow_keys_move_the_session_cursor():
+    """The screen keeping its own index is how `/next` and `↓` end up
+    disagreeing about which finding is current."""
+    app = _app([_finding(i) for i in range(5)])
+    app.handle(DOWN)
+    app.handle(DOWN)
+    assert app.session.cursor == 2
+    assert app.sel == 2
+
+
+def test_a_command_that_moves_the_cursor_moves_the_selection():
+    app = _app([_finding(i) for i in range(5)])
+    for ch in "/next 2":
+        app.handle(ch)
+    app.handle(ENTER)
+    assert app.session.cursor == 2
+    assert app.sel == 2
+
+
+def test_navigation_lands_on_the_finding_not_on_a_page_about_it():
+    """Detected by the cursor moving, not by the command's name, so anything
+    else that navigates behaves the same way."""
+    app = _app([_finding(i) for i in range(5)])
+    for ch in "/next":
+        app.handle(ch)
+    app.handle(ENTER)
+    assert app.view == DETAIL
+    assert app.view != OUTPUT
+
+
+def test_a_command_that_does_not_navigate_still_shows_its_output():
+    app = _app([_finding(i) for i in range(5)])
+    for ch in "/status":
+        app.handle(ch)
+    app.handle(ENTER)
+    assert app.view == OUTPUT
+
+
+def test_the_severity_badge_is_not_repeated_down_a_wrapped_title():
+    """Repeated on every line, one finding read as three."""
+    long_title = ("Using variable interpolation with github context data in a run "
+                  "step could allow an attacker to inject their own code into the "
+                  "runner and steal secrets")
+    app = _app([_finding(0, title=long_title)])
+    app.handle(ENTER)
+    body = strip("\n".join(_frame(app)))
+    assert body.count("HIGH") == 1
