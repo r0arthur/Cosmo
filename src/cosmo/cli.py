@@ -17,7 +17,25 @@ from .triggers import install_hook, render_hook_output, run_git_hook, run_github
 from .waiver import Baseline, fingerprint
 
 
+# Conventional shell code for "killed by SIGINT" (128 + 2). Distinct from
+# cosmo's own 0/1/2 so a CI job can tell an interrupted run from a failed one.
+INTERRUPTED = 130
+
+
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point. Ctrl-C is an ordinary way to stop, not a crash."""
+    try:
+        return _main(argv)
+    except KeyboardInterrupt:
+        # A traceback here says cosmo broke. It didn't — you stopped it. Any
+        # scanner still running was signalled on the way out by the static
+        # stage, so nothing is left working in the background.
+        print("\ninterrupted — no report written; nothing was posted or changed.",
+              file=sys.stderr)
+        return INTERRUPTED
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cosmo", description="cosmo security review + zero-day discovery (full build, steps 1–20)")
     from . import __version__
     parser.add_argument("--version", action="version",

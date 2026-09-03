@@ -356,3 +356,28 @@ def test_credits_file_lists_every_registered_tool():
         assert tool.author in credits, f"{tool.author} missing from CREDITS.md"
         assert tool.license in credits, f"{tool.name}'s license missing"
         assert tool.homepage.rstrip("/") in credits, f"{tool.name}'s homepage missing"
+
+
+# --- stopping a run ---------------------------------------------------------
+
+def test_interrupt_stops_the_scanners_before_the_pool_waits(registry, tmp_path,
+                                                            monkeypatch):
+    """Ctrl-C reaches the main thread while workers block reading a scanner.
+    The pool's shutdown then waits for them, so unless the children are stopped
+    the interrupt looks like a hang. Handled inside the `with`, because leaving
+    the block runs that shutdown first."""
+    from cosmo.static import runners
+
+    killed = []
+    monkeypatch.setattr(runners, "terminate_running_scanners",
+                        lambda *a, **k: killed.append(True) or 1)
+    monkeypatch.setattr(prefilter, "terminate_running_scanners",
+                        runners.terminate_running_scanners)
+
+    def interrupted(root, ev, sk):
+        raise KeyboardInterrupt
+
+    registry([_fake("alpha", runner=interrupted)])
+    with pytest.raises(KeyboardInterrupt):
+        run_static_prefilter(str(tmp_path))
+    assert killed, "scanners were not stopped on interrupt"

@@ -131,6 +131,18 @@ pip install semgrep
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+### I pressed Ctrl-Z and cosmo did not exit
+
+Ctrl-Z **suspends**; it does not stop. The run is frozen in the background —
+`jobs` lists it, `fg` resumes it, `kill %1` ends it. To stop a run, use
+**Ctrl-C**: cosmo exits `130`, writes no report, posts nothing, and stops every
+scanner it started (including semgrep's `semgrep-core`, which otherwise outlives
+the run). Give it a couple of seconds — scanners get a brief grace period before
+they are killed.
+
+If Ctrl-C used to leave a `concurrent.futures` traceback, that is fixed: it was
+cosmo failing to say "you stopped me" rather than anything actually breaking.
+
 ### How do I know which scanners I have, and whether they are current?
 
 ```bash

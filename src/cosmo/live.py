@@ -17,6 +17,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import sys
 import threading
 import time
@@ -121,6 +122,8 @@ class LiveUI:
         self._tick = tick
         self._ticker: threading.Thread | None = None
         self._stop = threading.Event()
+        self._prev_tstp = None      # handlers displaced by _install_suspend_handlers
+        self._prev_cont = None
 
     # --- sink ---------------------------------------------------------------
 
@@ -179,9 +182,66 @@ class LiveUI:
             return
         self._out.write("\033[?25l")   # hide cursor while we repaint
         self._out.flush()
+        self._install_suspend_handlers()
         self._ticker = threading.Thread(target=self._tick_loop, name="cosmo-ui",
                                         daemon=True)
         self._ticker.start()
+
+    # --- surviving Ctrl-Z ---------------------------------------------------
+    #
+    # Ctrl-Z does not stop cosmo, it *suspends* it — that is the shell's job
+    # control, not something to override, and Ctrl-C remains the way to stop a
+    # run. But SIGTSTP freezes the process exactly where it stands, and this UI
+    # spends its life with the cursor hidden and a panel half-repainted. Without
+    # the handlers below the shell prompt comes back with no cursor at all, and
+    # `fg` resumes into the same mess.
+
+    def _install_suspend_handlers(self) -> None:
+        self._prev_tstp = self._prev_cont = None
+        if not self._tty or not hasattr(signal, "SIGTSTP"):
+            return
+        try:
+            self._prev_tstp = signal.signal(signal.SIGTSTP, self._on_suspend)
+            self._prev_cont = signal.signal(signal.SIGCONT, self._on_resume)
+        except ValueError:
+            # Signals can only be installed from the main thread; under a test
+            # harness or an embedding caller there is simply nothing to do.
+            self._prev_tstp = self._prev_cont = None
+
+    def _restore_suspend_handlers(self) -> None:
+        for sig, prev in ((getattr(signal, "SIGTSTP", None), self._prev_tstp),
+                          (getattr(signal, "SIGCONT", None), self._prev_cont)):
+            if sig is not None and prev is not None:
+                try:
+                    signal.signal(sig, prev)
+                except ValueError:
+                    pass
+        self._prev_tstp = self._prev_cont = None
+
+    def _on_suspend(self, signum, frame) -> None:
+        """Give the terminal its cursor back, then actually suspend."""
+        self._out.write("\033[?25h\n")
+        self._out.flush()
+        signal.signal(signal.SIGTSTP, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTSTP)
+        # Normally control resumes here only after SIGCONT, which re-arms this
+        # handler. But a stop signal aimed at an *orphaned* process group is
+        # discarded rather than honoured, so the kill above can be a no-op and
+        # execution continues straight on — leaving SIGTSTP at SIG_DFL and the
+        # next Ctrl-Z unable to restore the cursor. Re-arm either way.
+        self._on_resume(signum, frame)
+
+    def _on_resume(self, signum, frame) -> None:
+        """Back in the foreground: re-arm, re-hide, and redraw from scratch."""
+        try:
+            signal.signal(signal.SIGTSTP, self._on_suspend)
+        except ValueError:
+            pass
+        # The panel we last drew is scrolled away or overwritten; cursor-up
+        # arithmetic against it would corrupt whatever is on screen now.
+        self._drawn = 0
+        self._out.write("\033[?25l")
+        self._out.flush()
 
     def _tick_loop(self) -> None:
         # Repaint on a timer as well as on events, so elapsed time keeps moving
@@ -201,6 +261,7 @@ class LiveUI:
         self._stop.set()
         if self._ticker is not None:
             self._ticker.join(timeout=1)
+        self._restore_suspend_handlers()
         with self._lock:
             self._state.finished = True
             if self._tty:
