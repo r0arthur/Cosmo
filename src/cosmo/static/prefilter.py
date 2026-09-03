@@ -31,7 +31,8 @@ from typing import Callable
 
 from ..findings import Finding
 from .runners import (_run_bandit, _run_findsecbugs, _run_gitleaks,
-                      _run_opengrep, _run_semgrep, _run_trivy, _run_trufflehog)
+                      _run_opengrep, _run_semgrep, _run_trivy, _run_trufflehog,
+                      terminate_running_scanners)
 
 Runner = Callable[..., list[Finding]]
 
@@ -252,10 +253,20 @@ def run_static_prefilter(target_dir: str, events=None,
         # order regardless of which scanner finishes first.
         with ThreadPoolExecutor(max_workers=min(_concurrency(config), len(runnable)),
                                 thread_name_prefix="cosmo-static") as pool:
-            for found, notes in pool.map(
-                    lambda t: _run_one(t, str(root), ev, config), runnable):
-                findings += found
-                skipped += notes
+            try:
+                for found, notes in pool.map(
+                        lambda t: _run_one(t, str(root), ev, config), runnable):
+                    findings += found
+                    skipped += notes
+            except KeyboardInterrupt:
+                # Ctrl-C reaches the main thread; the workers are blocked
+                # reading a scanner's output and the pool's shutdown waits for
+                # them. Handled *inside* the `with`, because leaving the block
+                # runs that shutdown first — so the children have to be stopped
+                # here or the interrupt looks like a hang.
+                terminate_running_scanners()
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
 
     # Dependency auditing is trivy's job. Said plainly when trivy did not run,
     # because "no CVEs reported" and "nothing looked at the dependencies" are
