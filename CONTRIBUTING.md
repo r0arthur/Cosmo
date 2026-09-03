@@ -174,6 +174,20 @@ Concurrency changes need a test that would actually catch a race:
   "fine"; if the tool genuinely cannot report a version, pass `version_argv=()`
   so it is reported as unknown rather than assumed current.
 
+  If the tool has no pip package, add an installer function to
+  `src/cosmo/bootstrap.py` and register it in `INSTALLERS` so
+  `cosmo tools --install` and `scripts/install.sh` can fetch it too — build the
+  asset-name matching against the release's **real `assets` array**, the same
+  "capture, don't guess" rule as the parser. Verify against the release's
+  published checksum if it has one; if it does not, say so in the
+  `InstallResult.note` rather than reporting an unverified download as
+  equivalent to a verified one. If the binary's actual filename differs from
+  the tool's registry name (as `find-sec-bugs`/`findsecbugs` do), add it to
+  `LINK_NAME` — a test cross-checks every entry in `INSTALLERS` against what
+  `Tool.resolve()` in the static registry actually looks for, because the one
+  time this drifted, `uninstall()` silently left that tool's symlink behind
+  while removing every other one.
+
 ## Reporting security issues in cosmo itself
 
 If you find a way to make cosmo **bypass one of its own guardrails** — exfiltrate a

@@ -36,7 +36,26 @@ a missing tool is reported under `skipped:` in the report:
 The scanners are separate projects by other authors; cosmo runs whichever it
 finds on your `PATH` and never bundles them. See [CREDITS.md](../CREDITS.md).
 
-To see which of them this machine actually has, and whether they are current:
+**Method A (below) installs all seven automatically.** `semgrep` and `bandit`
+come from `pip`; the other five have no pip package, so cosmo fetches their
+GitHub release binaries itself — verified against the release's published
+checksum where one exists (`gitleaks`, `trivy`, `trufflehog`), downloaded over
+HTTPS only where it does not (`opengrep`, `find-sec-bugs`; both note this
+rather than reporting an unverified download as equivalent to a verified one).
+Nothing is bundled *into* cosmo — this is the same category of action as
+`pip install semgrep` already was, just reaching a release page instead of
+PyPI, and happening for you instead of by hand.
+
+Anywhere else — a `.deb` install, a manual `pip install -e`, a machine the
+installer never ran on — the same fetcher is available directly:
+
+```bash
+cosmo tools --install              # fetch every one of the five that is missing
+cosmo tools --install gitleaks     # or just one
+```
+
+To see which of the seven this machine actually has, and whether they are
+current:
 
 ```bash
 cosmo tools                    # offline
@@ -71,22 +90,41 @@ That is a thin wrapper for the installer, which you can also call directly:
 4. Symlinks `~/.local/bin/cosmo` → the venv's `cosmo`
 5. Symlinks `~/.local/bin/semgrep` and `~/.local/bin/bandit` too, if they installed — otherwise cosmo
    would not find it on `PATH` and the static stage would show as skipped
+6. Fetches `gitleaks`, `trivy`, `opengrep`, `trufflehog`, and `find-sec-bugs`
+   from their GitHub releases via `cosmo tools --install` — each into
+   `~/.local/share/cosmo/tools/<name>/`, symlinked into `~/.local/bin/` the
+   same way as the pip-installed pair (skippable individually or all at once —
+   see below)
+
+A tool this machine's OS/architecture has no release asset for (or that fails
+to fetch — offline, rate-limited) is skipped, not fatal: the rest of the
+install continues, and that scanner shows as `not installed` in `cosmo tools`
+same as if you had never asked for it.
 
 **Knobs** (environment variables):
 
 | Variable | Default | Effect |
 |---|---|---|
-| `PREFIX` | `$HOME/.local` | Install root; binaries go to `$PREFIX/bin` |
+| `PREFIX` | `$HOME/.local` | Install root; binaries go to `$PREFIX/bin`, fetched tools to `$PREFIX/share/cosmo/tools` |
 | `VENV` | `$PREFIX/share/cosmo/venv` | Where the virtualenv lives |
-| `NO_SEMGREP` | unset | Set to any value to skip installing semgrep |
-| `NO_BANDIT` | unset | Set to any value to skip installing bandit |
+| `NO_SEMGREP` | unset | Skip installing semgrep (pip) |
+| `NO_BANDIT` | unset | Skip installing bandit (pip) |
+| `NO_GITLEAKS` | unset | Skip fetching gitleaks (GitHub release) |
+| `NO_TRIVY` | unset | Skip fetching trivy (GitHub release) |
+| `NO_OPENGREP` | unset | Skip fetching opengrep (GitHub release) |
+| `NO_TRUFFLEHOG` | unset | Skip fetching trufflehog (GitHub release) |
+| `NO_FINDSECBUGS` | unset | Skip fetching find-sec-bugs (GitHub release) |
+| `NO_SCANNERS` | unset | Skip all five GitHub-release fetches at once |
 
 ```bash
 PREFIX=/opt ./scripts/install.sh          # system-wide-ish location
-NO_SEMGREP=1 ./scripts/install.sh         # skip the static scanner
+NO_SEMGREP=1 ./scripts/install.sh         # skip semgrep specifically
+NO_SCANNERS=1 ./scripts/install.sh        # cosmo alone, fetch nothing
 ```
 
-**Re-running upgrades in place** — it is safe to run repeatedly.
+**Re-running upgrades in place** — it is safe to run repeatedly. Re-running
+`cosmo tools --install` (or the whole installer) re-fetches each tool's latest
+release and replaces what is there.
 
 **Uninstall:**
 
@@ -94,9 +132,10 @@ NO_SEMGREP=1 ./scripts/install.sh         # skip the static scanner
 make uninstall          # or: ./scripts/install.sh --uninstall
 ```
 
-This removes `~/.local/bin/cosmo` and the venv. The `semgrep` and `bandit`
-symlinks are removed **only if they point into cosmo's venv**, so a copy you
-installed yourself is never clobbered.
+This removes `~/.local/bin/cosmo`, the venv, and `~/.local/share/cosmo/tools`.
+Every scanner symlink — the pip-installed pair and the five fetched ones — is
+removed **only if it points into a location cosmo itself manages**, so a copy
+you installed yourself, anywhere else on `PATH`, is never touched.
 
 ---
 
@@ -132,6 +171,12 @@ package installs and runs with zero of them present, and each missing one is
 named under `skipped:` on every scan rather than silently narrowing it. See the
 [optional-tools table](#requirements-at-a-glance) above and
 [`cosmo tools`](usage.md#cosmo-tools) to check what's on a given machine.
+
+After installing the package, `cosmo tools --install` fetches the five that
+have no Debian package (see [above](#requirements-at-a-glance)) the same way
+Method A's installer does — it is not part of the `.deb` payload itself
+(nothing is bundled; see [CREDITS.md](../CREDITS.md) on why), but it is the
+same fetcher, reachable from any install method.
 
 **Building requires** `dpkg-deb` and `fakeroot` (present on Debian/Ubuntu; CI
 installs `fakeroot` explicitly).
@@ -356,7 +401,8 @@ git remote set-url origin ssh://git@ssh.github.com:443/<owner>/<repo>.git
 | Symptom | Cause | Fix |
 |---|---|---|
 | `cosmo: command not found` after Method A | `$PREFIX/bin` not on `PATH` | `export PATH="$HOME/.local/bin:$PATH"` |
-| Stages show `static:<tool> (not installed …)` | That scanner is absent, or in a venv not on `PATH` | The skip line names the install command or release page; for semgrep, re-run `./scripts/install.sh` without `NO_SEMGREP` |
+| Stages show `static:<tool> (not installed …)` | That scanner is absent, or in a venv/tools dir not on `PATH` | `cosmo tools --install` (the 5 without a pip package) or `cosmo tools --install <tool>`; for semgrep/bandit, re-run `./scripts/install.sh` without `NO_SEMGREP`/`NO_BANDIT` |
+| `cosmo tools --install` fetches nothing for a tool | Its project has no release asset for this OS/architecture | Reported as `unsupported OS: ...` or `no ... release asset matches this platform` — install that one manually from its release page |
 | `static:find-sec-bugs (Java source found but no compiled classes …)` | find-sec-bugs analyses bytecode, not source | Build first (`mvn -q compile`), so `target/classes` exists |
 | `model:claude (cosmo's default) unavailable — needs ...` | The selected provider has no credentials here; the line lists what the others need | [Turn on the AI review](#turning-on-the-ai-review), or `--model <name>` |
 | `error: target path does not exist: '...'` | Bad path, or an unset shell variable that expanded to nothing | Check the path; for a PR use `owner/repo#123` |

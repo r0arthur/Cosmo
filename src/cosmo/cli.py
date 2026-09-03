@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import os.path as _osp
 import sys
+from pathlib import Path
 
 from .config import load_config
 from .diff import resolve_diff
@@ -158,6 +160,21 @@ def _main(argv: list[str] | None = None) -> int:
                               "the network)")
     p_tools.add_argument("--format", choices=["cli", "json"], default="cli")
     p_tools.add_argument("--no-color", action="store_true")
+    p_tools.add_argument(
+        "--install", nargs="*", metavar="NAME", default=None,
+        help="fetch and install scanners that have no pip package "
+             "(gitleaks, trivy, opengrep, trufflehog, find-sec-bugs) from "
+             "their GitHub releases. With no NAME, installs every one of "
+             "those that is missing; verified against the release's published "
+             "checksum where one exists, refused on a mismatch")
+    p_tools.add_argument(
+        "--bindir", default=None,
+        help="where to symlink installed tools (default: $HOME/.local/bin, "
+             "or $PREFIX/bin if PREFIX is set)")
+    p_tools.add_argument(
+        "--toolsdir", default=None,
+        help="where installed tools actually live before being symlinked "
+             "(default: $HOME/.local/share/cosmo/tools)")
 
     p_trends = sub.add_parser("trends", help="show lifecycle/trend + compliance rollup")
     p_trends.add_argument("target", help="local path previously scanned with --record")
@@ -575,14 +592,77 @@ _TOOL_MARK = {
 }
 
 
+def _default_bindir() -> Path:
+    prefix = os.environ.get("PREFIX")
+    return Path(prefix, "bin") if prefix else Path.home() / ".local" / "bin"
+
+
+def _default_toolsdir() -> Path:
+    prefix = os.environ.get("PREFIX")
+    base = Path(prefix) if prefix else Path.home() / ".local"
+    return base / "share" / "cosmo" / "tools"
+
+
+def _cmd_tools_install(args) -> int:
+    """`cosmo tools --install [NAME ...]` — fetch the binary-only scanners.
+
+    A separate function from `_cmd_tools` rather than a branch inside it: this
+    one touches the network and the filesystem unconditionally (it was asked
+    to), where the rest of `_cmd_tools` is careful to do neither without
+    `--check-updates`. Keeping them apart keeps that boundary visible in the
+    diff of any future change, not just in a comment.
+    """
+    from . import bootstrap
+
+    names = args.install if args.install else list(bootstrap.INSTALLERS)
+    unknown = [n for n in names if n not in bootstrap.INSTALLERS]
+    if unknown:
+        print(f"error: cosmo does not fetch {', '.join(unknown)!r} — it has no "
+              f"pip package, so it is not one of "
+              f"{', '.join(sorted(bootstrap.INSTALLERS))}. "
+              f"semgrep/bandit come from `pip install` (see scripts/install.sh).",
+              file=sys.stderr)
+        return 2
+
+    bindir = Path(args.bindir) if args.bindir else _default_bindir()
+    toolsdir = Path(args.toolsdir) if args.toolsdir else _default_toolsdir()
+    bindir.mkdir(parents=True, exist_ok=True)
+
+    failed = []
+    for name in names:
+        print(f"  fetching {name} …", file=sys.stderr)
+        try:
+            result = bootstrap.install(name, bindir=bindir, toolsdir=toolsdir)
+        except bootstrap.BootstrapError as exc:
+            print(f"  ✗ {name}: {exc}", file=sys.stderr)
+            failed.append(name)
+            continue
+        if not result.installed:
+            print(f"  ⊘ {name}: {result.note}", file=sys.stderr)
+            continue
+        mark = "✓" if result.verified else "✓ (unverified)"
+        print(f"  {mark} {name} → {result.path}", file=sys.stderr)
+        if result.note:
+            print(f"    {result.note}", file=sys.stderr)
+
+    if str(bindir) not in os.environ.get("PATH", "").split(os.pathsep):
+        print(f"\nNOTE: {bindir} is not on your PATH. Add it:\n"
+              f'      export PATH="{bindir}:$PATH"', file=sys.stderr)
+    return 1 if failed else 0
+
+
 def _cmd_tools(args) -> int:
     """Show what the static stage can actually run, and whether it is current.
 
-    Offline unless `--check-updates` is passed. Exit 1 when something wants
-    attention (a scanner missing, or one behind its latest release) so the
-    command is usable as a CI gate; an *unknown* version is not a failure,
-    because not knowing is a fact about the tool, not a verdict on it.
+    Offline unless `--check-updates` or `--install` is passed. Exit 1 when
+    something wants attention (a scanner missing, or one behind its latest
+    release) so the command is usable as a CI gate; an *unknown* version is
+    not a failure, because not knowing is a fact about the tool, not a verdict
+    on it.
     """
+    if args.install is not None:
+        return _cmd_tools_install(args)
+
     from .versions import check_cosmo, check_tools
 
     statuses = check_tools(check_updates=args.check_updates)
@@ -636,6 +716,11 @@ def _cmd_tools(args) -> int:
               f"every run:")
         for t in missing:
             print(f"    {t.name}: {t.install}")
+        from . import bootstrap
+        fetchable = [t.name for t in missing if t.name in bootstrap.INSTALLERS]
+        if fetchable:
+            print(f"\n  cosmo can fetch {', '.join(fetchable)} itself: "
+                  f"cosmo tools --install")
     if outdated:
         print()
         print(f"  {len(outdated)} scanner(s) behind their latest release. Old "
