@@ -193,6 +193,11 @@ def _cmd_status(session: Session, args) -> str:
     # differently once you know three stages never ran.
     skipped = (f"{len(snapshot.skipped_stages)} stage(s) — /report cli to list"
                if snapshot.skipped_stages else "none")
+    if not session.scanned and not snapshot.findings:
+        # "findings: none" before anything has run is the most misleading line
+        # this command could print. Guarded on there being nothing to show as
+        # well, so a session that got its findings some other way still counts.
+        csum = "not scanned yet — /scan (static) or /scan llm (with the model)"
     return (f"target: {session.target}\nfindings: {csum}\n"
             f"skipped: {skipped}\n"
             f"threshold: {session.effective_threshold()}\nmodel: {model}\n"
@@ -364,6 +369,37 @@ def _cmd_report(session: Session, args) -> str:
     return render_cli(report, color=False)
 
 
+def _cmd_scan(session: Session, args) -> str:
+    """[llm] — run the scanners now; add `llm` to include the model review"""
+    llm = bool(args) and args[0].lower() in ("llm", "model", "full", "ai")
+    if args and not llm:
+        return f"unknown argument {args[0]!r}; use /scan or /scan llm"
+
+    if llm:
+        # Naming the provider before the call, not after: this is the moment the
+        # target's source leaves the machine, and it should not be a surprise.
+        from ..providers.registry import describe_unavailable, resolve_primary
+        provider, _ = resolve_primary(session.config,
+                                      session_model=session.session_model)
+        if not provider.available():
+            return (f"cannot run the model review: {describe_unavailable(provider)}\n"
+                    f"/scan on its own runs the static scanners, which need no provider.")
+        session.emit(f"scanning with model:{provider.name} — the target's source "
+                     f"is sent to that provider …")
+    else:
+        session.emit("scanning with the static scanners only (no model, no egress) …")
+
+    report = session.scan(llm=llm)
+    actionable = [f for f in report.findings if not f.waived]
+    lines = [f"scan complete — {len(actionable)} finding(s) at threshold "
+             f"{session.effective_threshold()}"]
+    # The coverage contract holds here too: a scan is only as strong as the
+    # stages behind it, and this is the moment the operator is looking.
+    for skip in report.skipped_stages:
+        lines.append(f"  skipped: {skip}")
+    return "\n".join(lines)
+
+
 def _cmd_next(session: Session, args) -> str:
     """[n] — move to the next finding and show it in full"""
     return _step(session, +1, args)
@@ -443,6 +479,7 @@ _COMMANDS = {
     "audit": _cmd_audit,
     "report": _cmd_report,
     "tools": _cmd_tools,
+    "scan": _cmd_scan,
     "next": _cmd_next,
     "previous": _cmd_previous,
 }

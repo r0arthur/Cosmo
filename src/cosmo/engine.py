@@ -32,6 +32,7 @@ def run_review(
     audit: bool = False,
     progress=None,
     events=None,
+    static_only: bool = False,
 ) -> Report:
     # An Emitter with no sink is a no-op, so the instrumented path below is the
     # same path an uninstrumented caller takes.
@@ -93,7 +94,7 @@ def run_review(
     # Step 1 — LLM review. Provider resolved through the layer (§8): resolution
     # order + data-governance gate + fallback to the Claude default.
     ev.stage_started("provider")
-    if provider is None:
+    if provider is None and not static_only:
         # `model` (the --model flag) enters at the CLI tier of the §8 resolution
         # order, so it outranks the configured default but still passes the
         # data-governance gate.
@@ -103,15 +104,29 @@ def run_review(
             ev.warning(w, stage="provider")
     # Route this provider's model-API egress through the broker (§8 + §9a): one
     # audit log, one forbidden-address block. Honors the operator allow-list.
-    if getattr(provider, "broker", None) is None:
+    if not static_only and getattr(provider, "broker", None) is None:
         from .providers.egress import provider_broker_from_config
         try:
             provider.broker = provider_broker_from_config(config)
         except AttributeError:
             pass  # a provider that doesn't accept a broker (e.g. a test stub)
-    _watch_egress(provider, ev)
+    if not static_only:
+        # Nothing is going to reach the network, so there is no egress to watch
+        # and no provider to wire a broker into.
+        _watch_egress(provider, ev)
 
-    if provider.available():
+    if static_only:
+        # The caller asked for the scanners and nothing else. Recorded like any
+        # other stage that did not run — but with its own reason, because "you
+        # did not ask for this" and "it could not run" are different facts and a
+        # report that blamed a missing API key here would be a lie.
+        reason = ("model review not requested (static scanners only) — "
+                  "ask for it to include the model")
+        skipped.append(reason)
+        ev.stage_skipped("provider", reason)
+        ev.stage_skipped("context", "no model review requested — context not built")
+        ev.stage_skipped("llm", reason)
+    elif provider.available():
         ev.stage_completed("provider", f"model:{provider.name} ready",
                            provider=provider.name)
         ev.stage_started("context")
