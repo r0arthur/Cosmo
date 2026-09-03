@@ -86,3 +86,37 @@ def render_cli(report: Report, color: bool | None = None) -> str:
     for n in report.notes:
         lines.append(f"  note: {n}")
     return "\n".join(lines)
+
+
+def render_finding(f, *, width_hint: int = _MAX_WIDTH) -> str:
+    """One finding in full, as plain text.
+
+    What `/next` and `/previous` print. Deliberately not the list row: the row
+    exists to be scanned, this exists to be acted on, so nothing is trimmed away
+    and the waive command is right there.
+    """
+    limit = min(shutil.get_terminal_size((100, 24)).columns, width_hint)
+    loc = f"{f.file}:{f.line}" if f.line else (f.file or "(file-level)")
+    out = [f"{str(f.severity).upper()}  {f.title}", ""]
+    for label, value in (("location", loc),
+                         ("source", f.source),
+                         ("category", f.category or "—"),
+                         ("confidence", f"{f.confidence:.0%}"),
+                         ("status", f.confirmation_status.value),
+                         ("fingerprint", f.fingerprint or "—")):
+        out.append(f"  {label:<12}{value}")
+    for label, text in (("evidence", f.evidence),
+                        ("exploit", f.exploit_scenario),
+                        ("fix", f.remediation)):
+        if str(text).strip():
+            out.append("")
+            out.append(f"  {label.upper()}")
+            for line in str(text).splitlines():
+                out.append(f"    {_fit(line, limit - 4, collapse=False)}")
+    if f.waived:
+        out.append("")
+        out.append(f"  waived: {f.waived_reason or '(no reason recorded)'}")
+    elif f.fingerprint:
+        out.append("")
+        out.append(f"  /waive {f.fingerprint} <reason>")
+    return "\n".join(out)

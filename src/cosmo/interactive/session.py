@@ -33,6 +33,10 @@ class Session:
     # an incomplete scan as a complete one — the one thing every other surface
     # in cosmo is built to prevent. Carried forward from every scan and audit.
     skipped_stages: list[str] = field(default_factory=list)
+    # Where "here" is in the findings list. One cursor, shared: the screen's
+    # selection and `/next` move the same value, or the arrow keys and the
+    # commands would disagree about which finding is current.
+    cursor: int = 0
     external=None                              # /scope — lazily created ExternalTargetMode
     extensions=None                            # LoadedExtensions — lazily activated
     # Injected so the REPL stays hermetic in tests; defaults to the real engine.
@@ -148,6 +152,28 @@ class Session:
             return Report(target=self.target, findings=list(self.findings),
                           skipped_stages=list(self.skipped_stages),
                           notes=list(self.notes))
+
+    def ordered_findings(self) -> list[Finding]:
+        """Findings in one canonical order: severity first, then location.
+
+        Both the screen and `/next` walk this, so "the next finding" means the
+        same thing however you ask for it.
+        """
+        return sorted(self.snapshot_findings(),
+                      key=lambda f: (-int(f.severity), f.file, f.line))
+
+    def current_finding(self) -> Finding | None:
+        items = self.ordered_findings()
+        return items[self.cursor] if 0 <= self.cursor < len(items) else None
+
+    def move_cursor(self, delta: int) -> Finding | None:
+        """Move the cursor, clamped to the list. Returns what is now current."""
+        items = self.ordered_findings()
+        if not items:
+            self.cursor = 0
+            return None
+        self.cursor = max(0, min(len(items) - 1, self.cursor + delta))
+        return items[self.cursor]
 
     def find(self, finding_id: str) -> Finding | None:
         for f in self.findings:
