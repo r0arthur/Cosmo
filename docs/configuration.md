@@ -94,6 +94,7 @@ A starting point with every key annotated ships as
 | `OPENAI_API_KEY` | The `codex` provider | That provider is unavailable |
 | `DEEPSEEK_API_KEY` | The `deepseek` provider | That provider is unavailable |
 | `NO_COLOR` | Any value disables ANSI colour in `--live` | Colour on when stderr is a TTY |
+| `COSMO_NO_TUI` | Any value forces `cosmo interactive` to the line-based session | Full-screen on a terminal |
 | `GH_TOKEN` | Consumed by the `gh` CLI in CI for PR reads/comments | `gh`'s own auth is used |
 
 Each built-in provider reads a fixed variable — the pairing is in

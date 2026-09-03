@@ -24,23 +24,13 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 
+from .ansi import C, SEVERITY_COLOR, clip, clip_path, dur, shorten_paths
 from .events import STAGES, Event, Kind
 
-# --- palette ----------------------------------------------------------------
-
-_C = {
-    "reset": "\033[0m", "dim": "\033[2m", "bold": "\033[1m",
-    "gray": "\033[38;5;245m", "faint": "\033[38;5;240m",
-    "cyan": "\033[38;5;80m", "blue": "\033[38;5;75m",
-    "green": "\033[38;5;77m", "yellow": "\033[38;5;221m",
-    "orange": "\033[38;5;215m", "red": "\033[38;5;203m",
-    "magenta": "\033[38;5;176m", "white": "\033[38;5;253m",
-}
-
-_SEVERITY_COLOR = {
-    "critical": "red", "high": "orange", "medium": "yellow",
-    "low": "blue", "info": "gray",
-}
+# Palette and text-fitting come from `ansi`, so the live panel and the
+# full-screen session cannot drift apart on colour or clipping rules.
+_C = C
+_SEVERITY_COLOR = SEVERITY_COLOR
 
 # Activity-feed gutter per event kind: (glyph, label, color).
 _GUTTER: dict[Kind, tuple[str, str, str]] = {
@@ -503,36 +493,9 @@ def _tally(items) -> dict:
     return out
 
 
-_ABS_PATH = re.compile(r"(?:/[^\s/]+){3,}")
-
-
-def _shorten_paths(text: str, keep: int = 2) -> str:
-    """Collapse absolute paths in a feed line to their identifying tail.
-
-    Whole-tree mode carries absolute paths, which otherwise fill the line with
-    the one part of it every row has in common.
-    """
-    def _sub(m: "re.Match") -> str:
-        raw = m.group(0)
-        if len(raw) <= 34:
-            return raw
-        return "…/" + "/".join(raw.strip("/").split("/")[-keep:])
-    return _ABS_PATH.sub(_sub, text)
-
-
-def _clip_path(path: str, width: int) -> str:
-    """Clip a path from the left — the tail identifies it, the prefix rarely does."""
-    path = str(path or "-")
-    return path if len(path) <= width else "…" + path[-(width - 1):]
-
-
-def _clip(text: str, width: int) -> str:
-    text = " ".join(str(text).split())
-    if width < 8:
-        return text[:width]
-    return text if len(text) <= width else text[: width - 1] + "…"
-
-
-def _dur(seconds: float) -> str:
-    seconds = int(seconds)
-    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+# Kept under their private names: this module's call sites and its tests both
+# reach for them, and the implementations now live in `ansi`.
+_shorten_paths = shorten_paths
+_clip_path = clip_path
+_clip = clip
+_dur = dur
