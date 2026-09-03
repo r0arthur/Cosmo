@@ -37,8 +37,26 @@ Config keys live in **[configuration.md](configuration.md)**; workflows in
 | `0` | Ran successfully; nothing actionable survived the threshold | all |
 | `1` | Ran successfully; at least one non-waived finding survived — or, for `tools`, a scanner is missing or outdated | `review`, `history`, `hook --blocking`, `action`, `tools` |
 | `2` | Could not run — bad target, no reviewer available, disabled capability, missing required flag | `review`, `history`, `fuzz`, `plugin check` |
+| `130` | Stopped with Ctrl-C — nothing was written or posted | all |
 
 `plugin check` returns non-zero on drift.
+
+### Stopping a run
+
+**Ctrl-C** is how you stop cosmo. It prints one line and exits `130`; no report
+is written and nothing is posted. Scanners are subprocesses and the interrupt
+only reaches cosmo's main thread, so cosmo signals each running scanner *and its
+children* on the way out — semgrep in particular spawns a `semgrep-core` that
+would otherwise outlive the run and keep burning CPU. A scanner is given two
+seconds to wind down before it is killed, which is why a Ctrl-C mid-scan takes a
+moment rather than being instant.
+
+**Ctrl-Z does not stop cosmo — it suspends it.** That is your shell's job
+control, not something cosmo overrides; the run is frozen in the background and
+`fg` resumes it (`jobs` lists it, `kill %1` ends it). Under `--live` the panel
+runs with the cursor hidden, so cosmo hands the cursor back before suspending and
+re-hides it on resume — otherwise the shell prompt would come back with no
+cursor at all. If you meant to stop the run, use Ctrl-C.
 
 ---
 

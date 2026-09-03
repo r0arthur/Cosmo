@@ -147,3 +147,27 @@ def test_tools_json_is_machine_readable(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["tools"][0]["name"] == "bandit"
     assert payload["cosmo"]["version"] == "9.9.9"
+
+
+# --- stopping a run cleanly -------------------------------------------------
+
+def test_ctrl_c_is_not_a_crash(monkeypatch, capsys):
+    """Ctrl-C during a scan dumped a ThreadPoolExecutor traceback, which reads
+    as "cosmo broke" when what happened is "you stopped it"."""
+    import cosmo.cli as cli
+
+    def interrupted(*a, **k):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "_main", interrupted)
+    assert main(["review", "."]) == cli.INTERRUPTED == 130
+    err = capsys.readouterr().err
+    assert "interrupted" in err
+    assert "Traceback" not in err
+    assert "no report written" in err       # says what state it left behind
+
+
+def test_the_interrupt_code_is_distinct_from_a_finding(monkeypatch, tmp_path):
+    """A CI job must be able to tell "stopped" from "found something"."""
+    import cosmo.cli as cli
+    assert cli.INTERRUPTED not in (0, 1, 2)
