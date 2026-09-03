@@ -710,6 +710,8 @@ what that layer returns.
 | `/disclose <finding-id>` | Draft + **queue** a disclosure — sends nothing |
 | `/report [cli\|markdown\|sarif\|pr]` | Export findings **with the session's coverage** |
 | `/tools` | Which static scanners this machine has, and their versions (offline) |
+| `/next [n]` | Move to the next finding and show it in full |
+| `/previous [n]` | Move to the previous finding and show it in full |
 | `/extensions` | List activated extensions and their `/x-*` commands |
 
 **The command layer cannot bypass the guardrails.** `/duration` is capped by
@@ -727,6 +729,15 @@ stages that is.
 `/report pr` is the *gated* public version, and only that one withholds
 sensitive findings. (`markdown` previously aliased `pr`, which meant asking for
 markdown in an operator session silently handed back the redacted comment.)
+
+**`/next` and `/previous` share the screen's selection.** Both they and the
+arrow keys move one cursor over one ordering (severity first, then location), so
+a command and a keypress can never disagree about which finding is current. In
+the full-screen session they land you on the finding itself rather than on a
+page of text about it; in the plain REPL they print it in full — location,
+source, category, confidence, evidence, remediation, and the `/waive` command,
+with nothing trimmed. Walking past either end says so instead of silently
+redisplaying the same finding.
 
 **`/tools` is offline.** It reports what is installed and each scanner's version;
 `cosmo tools --check-updates` is the opt-in that compares against upstream

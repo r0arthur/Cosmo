@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from ..config import _parse_duration
 from ..fuzz.campaign import ConfirmationRequired, resolve_duration
-from ..output import (render_cli, render_pr_comment, render_report,
-                      render_sarif)
+from ..output import (render_cli, render_finding, render_pr_comment,
+                      render_report, render_sarif)
 from ..findings import Report
 from ..waiver import Baseline
 from .session import Session
@@ -364,6 +364,45 @@ def _cmd_report(session: Session, args) -> str:
     return render_cli(report, color=False)
 
 
+def _cmd_next(session: Session, args) -> str:
+    """[n] — move to the next finding and show it in full"""
+    return _step(session, +1, args)
+
+
+def _cmd_previous(session: Session, args) -> str:
+    """[n] — move to the previous finding and show it in full"""
+    return _step(session, -1, args)
+
+
+def _step(session: Session, direction: int, args) -> str:
+    """Walk the findings list. Shared with the screen's arrow keys.
+
+    Both move `session.cursor` over `session.ordered_findings()`, so `/next`
+    and `↓` cannot disagree about which finding is current.
+    """
+    step = 1
+    if args:
+        try:
+            step = max(1, int(args[0]))
+        except ValueError:
+            return f"not a number: {args[0]!r}"
+
+    items = session.ordered_findings()
+    if not items:
+        return ("no findings in this session yet"
+                + (" — the scan is still running" if session.audit_running()
+                   else "; /report cli to see what was skipped"))
+
+    before = session.cursor
+    finding = session.move_cursor(direction * step)
+    at = session.cursor
+    edge = ""
+    if at == before:
+        # Say so rather than silently redisplaying the same finding.
+        edge = f"  (already at the {'last' if direction > 0 else 'first'})"
+    return f"[{at + 1}/{len(items)}]{edge}\n\n{render_finding(finding)}"
+
+
 def _cmd_tools(session: Session, args) -> str:
     """— static scanners: installed, version, and what a missing one costs"""
     from ..versions import check_cosmo, check_tools
@@ -404,4 +443,6 @@ _COMMANDS = {
     "audit": _cmd_audit,
     "report": _cmd_report,
     "tools": _cmd_tools,
+    "next": _cmd_next,
+    "previous": _cmd_previous,
 }
