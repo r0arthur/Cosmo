@@ -65,6 +65,8 @@ interactive session are all thin callers — no scan logic lives in any of them.
 | Package | Role |
 |---|---|
 | `diff/` | Normalizes local git, staged, whole-tree, and GitHub PR diffs into one shape |
+| `ansi.py` | Shared terminal primitives — one palette, one set of clipping rules, so the live panel and the session screen cannot drift |
+| `interactive/screen.py` | Full-screen session UI: hand-rolled `termios`/ANSI, no UI dependency, falls back to the line REPL off a terminal |
 | `static/` | Static pre-filter — a registry of seven scanners (`prefilter.py`) and one runner each (`runners.py`), run as parallel subprocesses |
 | `providers/` | Model layer: Claude, claude-cli, OpenAI-compatible, local llama |
 | `broker/` | The single guarded egress chokepoint — mode gate, scope, rate limit, log |
