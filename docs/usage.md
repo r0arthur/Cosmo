@@ -636,14 +636,61 @@ A live session on the same engine as batch mode, answering follow-ups from
 in-session state without re-scanning.
 
 ```bash
-cosmo interactive <target> [--no-scan] [--operator-config FILE]
+cosmo interactive <target> [--no-scan] [--plain] [--operator-config FILE]
 ```
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `<target>` | string | — | **Required.** Local path or GitHub PR |
 | `--no-scan` | flag | `false` | Open without an initial scan |
+| `--plain` | flag | `false` | Line-based session instead of the full-screen UI |
 | `--operator-config` | path | env | The ceiling |
+
+### The session screen
+
+On a terminal the session is full-screen. The scan runs in the background, so
+the list fills in while the UI stays responsive:
+
+```
+╭─ cosmo ──────────────────────────────────────────── 156 findings ╮
+│  target  .                                                       │
+│  floor  medium    model  claude (unavailable)    skipped  7 stages│
+├──────────────────────────────────────────────────────────────────┤
+│ ▸ HIGH      Secret leaked: generic-api-key    …/lib/posthog.tsx:10│
+│   HIGH      JWT token detected              …/service/license.rs:182│
+│   MEDIUM    CVE-2023-32681: python-requests       requirements.txt:1│
+├──────────────────────────────────────────────────────────────────┤
+│ › /report markdown                                               │
+╰──────────────────────────────────────────────────────────────────╯
+ ↑↓ select · ⏎ detail · tab complete · ^P history · /help · ^C quit
+```
+
+**The header carries coverage.** `skipped 7 stages` sits next to the finding
+count on purpose: a findings list is the easiest place in the whole tool to read
+an incomplete scan as a clean one. `model` is the provider actually resolved,
+and says so when it cannot run.
+
+| Key | Does |
+|---|---|
+| `↑` `↓` `PgUp` `PgDn` `Home` `End` | Move the selection (or scroll command output) |
+| `⏎` on an empty line | Open the selected finding — full evidence, remediation, waive command |
+| `Esc` | Back to the list |
+| Typing | Goes to the command line; it never competes with the arrows |
+| `Tab` | Complete a `/command` from the guarded registry |
+| `^P` / `^N` | Command history back / forward |
+| `^A` `^E` `^U` | Start of line · end of line · clear line |
+| `^C` | Quit |
+| `^Z` | Suspend — the terminal is handed back first, and retaken on `fg` |
+
+**It falls back on its own.** A pipe, CI, or anything that is not a terminal
+gets the line-based REPL instead, which stays the reference implementation of a
+session. `--plain` forces that on a terminal too, and `COSMO_NO_TUI=1` does the
+same from the environment.
+
+**The screen has no logic of its own.** Every command goes through the same
+guarded `dispatch` the plain REPL and the Claude Code plugin surface use, so the
+UI cannot relax a threshold, widen a scope, or post anything — it can only show
+what that layer returns.
 
 ### Slash commands
 
