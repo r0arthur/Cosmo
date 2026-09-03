@@ -636,15 +636,36 @@ A live session on the same engine as batch mode, answering follow-ups from
 in-session state without re-scanning.
 
 ```bash
-cosmo interactive <target> [--no-scan] [--plain] [--operator-config FILE]
+cosmo interactive <target> [--scan [static|llm]] [--plain] [--operator-config FILE]
 ```
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `<target>` | string | — | **Required.** Local path or GitHub PR |
-| `--no-scan` | flag | `false` | Open without an initial scan |
+| `--scan [static\|llm]` | choice | *don't* | Scan on open. Bare `--scan` means static only |
 | `--plain` | flag | `false` | Line-based session instead of the full-screen UI |
 | `--operator-config` | path | env | The ceiling |
+
+### Opening a session does not scan
+
+`cosmo interactive .` opens and waits. Scanning is something you ask for:
+
+| Command | Runs | Cost |
+|---|---|---|
+| `/scan` | the static scanners only | local, no model, nothing leaves the machine |
+| `/scan llm` | the full pipeline, model review included | **sends the target's source to your provider** |
+
+This used to be automatic, and it ran the *whole* pipeline — so on a machine
+with a working provider, typing `cosmo interactive .` sent your code to a vendor
+before you had asked for anything. "Open a session" and "spend money sending my
+code somewhere" should not be the same gesture.
+
+`/scan llm` names the provider before it calls it, and refuses with the reason
+if none can run rather than quietly producing a static-only result you would
+believe a model had reviewed. Both print what they skipped.
+
+`--scan` restores the old behaviour when you want it: `--scan` for static,
+`--scan llm` for the full thing.
 
 ### The session screen
 
@@ -709,6 +730,7 @@ what that layer returns.
 | `/scope [program=… includes=… rate=N]` | Declare an authorized external target |
 | `/disclose <finding-id>` | Draft + **queue** a disclosure — sends nothing |
 | `/report [cli\|markdown\|sarif\|pr]` | Export findings **with the session's coverage** |
+| `/scan [llm]` | Run the scanners now; `llm` adds the model review |
 | `/tools` | Which static scanners this machine has, and their versions (offline) |
 | `/next [n]` | Move to the next finding and show it in full |
 | `/previous [n]` | Move to the previous finding and show it in full |

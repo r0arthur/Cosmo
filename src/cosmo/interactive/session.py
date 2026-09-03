@@ -115,7 +115,9 @@ class Session:
     def effective_threshold(self) -> str:
         return self.threshold_override or self.config.threshold
 
-    def scan(self) -> Report:
+    scanned: bool = field(default=False, repr=False)
+
+    def scan(self, *, llm: bool = True) -> Report:
         """Run the same pipeline batch mode runs, honoring the session model +
         threshold. Provider resolution still applies the §8 data-governance gate;
         a session `/model` cannot fan a sensitive repo's source off-box."""
@@ -125,10 +127,19 @@ class Session:
             # A copy so the session floor never mutates the loaded (trust-tiered) config.
             cfg = Config(data={**self.config.data, "threshold": self.threshold_override},
                          warnings=list(self.config.warnings))
-        provider, warns = resolve_primary(cfg, session_model=self.session_model)
-        self.notes.extend(warns)
-        report = scanner(self.target, cfg, provider=provider)
+        provider = None
+        if llm:
+            provider, warns = resolve_primary(cfg, session_model=self.session_model)
+            self.notes.extend(warns)
+        try:
+            report = scanner(self.target, cfg, provider=provider,
+                             static_only=not llm)
+        except TypeError:
+            # An injected test scanner need not know about `static_only`.
+            report = scanner(self.target, cfg, provider=provider)
         self.findings = report.findings
+        self.cursor = 0
+        self.scanned = True
         self.record_coverage(report)
         return report
 

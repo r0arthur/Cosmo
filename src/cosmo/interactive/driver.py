@@ -287,7 +287,7 @@ def run_agent(
     operator_config: str | None = None,
     read: Callable[[str], str] = input,
     write: Callable[[str], None] = print,
-    autoscan: bool = True,
+    scan_on_open: str | None = None,
 ) -> AgentDriver:
     """A natural-language REPL, harness-agnostic. Same guarded engine as batch
     mode; the planner decides which commands run, the driver contains them. With
@@ -307,8 +307,8 @@ def run_agent(
     driver = AgentDriver(session, planner)
     write("cosmo agent — natural language over the guarded command surface. "
           "The model can only run cosmo commands; guardrails are unchanged.")
-    if autoscan:
-        report = session.scan()
+    if scan_on_open:
+        report = session.scan(llm=scan_on_open == "llm")
         write(f"initial scan: {len(report.findings)} finding(s) at "
               f"threshold {session.effective_threshold()}")
     while True:

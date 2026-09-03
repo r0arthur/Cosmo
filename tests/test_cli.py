@@ -171,3 +171,16 @@ def test_the_interrupt_code_is_distinct_from_a_finding(monkeypatch, tmp_path):
     """A CI job must be able to tell "stopped" from "found something"."""
     import cosmo.cli as cli
     assert cli.INTERRUPTED not in (0, 1, 2)
+
+
+def test_interactive_rejects_a_target_that_does_not_exist(capsys):
+    """`cosmo interactive /typo` opened a session on nothing: scans returned
+    zero findings and the scanners failed against an absent path, which reads
+    as "your code is clean"."""
+    assert main(["interactive", "/no/such/path/really-xyz"]) == 2
+    assert "does not exist" in capsys.readouterr().out
+
+
+def test_agent_rejects_a_target_that_does_not_exist(capsys):
+    assert main(["agent", "/no/such/path/really-xyz"]) == 2
+    assert "does not exist" in capsys.readouterr().out
