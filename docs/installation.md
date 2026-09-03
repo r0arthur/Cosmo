@@ -121,10 +121,17 @@ Choose a different output directory with `OUT=/tmp ./packaging/build-deb.sh`.
 Because the launcher calls the **system** `python3` against a vendored library
 directory, the only requirement on the target machine is `python3 (>= 3.10)` —
 no `pip` step, no venv. `Architecture: all` (pure Python), so one build installs
-anywhere. The control file declares `Depends: python3 (>= 3.10)` and
-`Recommends: git`.
+anywhere. The control file declares `Depends: python3 (>= 3.10)`,
+`Recommends: git`, and `Suggests: gitleaks, bandit` — the two static scanners
+that exist as Debian packages. The other five (`semgrep`, `opengrep`,
+`trufflehog`, `trivy`, `find-sec-bugs`) are upstream binaries with no Debian
+package, so they aren't in `Suggests` either — apt has nothing to point at.
 
-`semgrep` and the `claude` CLI stay optional companions you install separately.
+None of the seven scanners, nor the `claude` CLI, is a hard dependency: this
+package installs and runs with zero of them present, and each missing one is
+named under `skipped:` on every scan rather than silently narrowing it. See the
+[optional-tools table](#requirements-at-a-glance) above and
+[`cosmo tools`](usage.md#cosmo-tools) to check what's on a given machine.
 
 **Building requires** `dpkg-deb` and `fakeroot` (present on Debian/Ubuntu; CI
 installs `fakeroot` explicitly).
