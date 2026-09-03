@@ -108,6 +108,8 @@ def _main(argv: list[str] | None = None) -> int:
     p_int.add_argument("target", help="local path or GitHub PR to open a session on")
     p_int.add_argument("--operator-config")
     p_int.add_argument("--no-scan", action="store_true", help="don't scan on start")
+    p_int.add_argument("--plain", action="store_true",
+                       help="line-based session instead of the full-screen UI")
 
     p_agent = sub.add_parser("agent", help="natural-language session, harness-agnostic")
     p_agent.add_argument("target", help="local path or GitHub PR to open a session on")
@@ -210,7 +212,8 @@ def _main(argv: list[str] | None = None) -> int:
         return code
     if args.cmd == "interactive":
         from .interactive import run_repl
-        run_repl(args.target, operator_config=args.operator_config, autoscan=not args.no_scan)
+        run_repl(args.target, operator_config=args.operator_config,
+                 autoscan=not args.no_scan, plain=args.plain)
         return 0
     if args.cmd == "agent":
         # Model-agnostic orchestration. The planner is resolved from config: a
