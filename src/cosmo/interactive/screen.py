@@ -357,6 +357,12 @@ class App:
             result = dispatch(self.session, line)
         except Exception as exc:                # a command must not kill the UI
             result = f"error: {exc}"
+        if line.split()[0] in ("/scan",):
+            # A scan replaces the list; show it rather than a paragraph about it.
+            self.view = FINDINGS
+            self.top = 0
+            self.note(str(result).splitlines()[0])
+            return
         if self.session.cursor != was_at:
             # A command that moved the cursor (`/next`, `/previous`) is a
             # navigation gesture, so land on the finding rather than on a page
@@ -465,8 +471,19 @@ class App:
     def _list_body(self, inner: int, height: int) -> list[str]:
         items = self.findings()
         if not items:
-            middle = "scanning…" if self.scanning else "no findings at this floor"
-            return ["", f"  {self._c(middle, 'gray')}"]
+            if self.scanning:
+                return ["", f"  {self._c('scanning…', 'gray')}"]
+            if not self.session.scanned:      # `items` is already empty here
+                # Nothing has run yet. "no findings" here would be the most
+                # misleading thing this screen could say.
+                return ["",
+                        f"  {self._c('nothing scanned yet', 'white')}",
+                        "",
+                        f"  {self._c('/scan', 'cyan')}      the static scanners "
+                        f"{self._c('— local, no model, nothing leaves the machine', 'faint')}",
+                        f"  {self._c('/scan llm', 'cyan')}  adds the model review "
+                        f"{self._c('— sends the target to your provider', 'faint')}"]
+            return ["", f"  {self._c('no findings at this floor', 'gray')}"]
         # Keep the selection on screen without snapping it to an edge.
         if self.sel < self.top:
             self.top = self.sel
@@ -564,13 +581,13 @@ class App:
 
     # --- loop ---------------------------------------------------------------
 
-    def scan_in_background(self) -> None:
+    def scan_in_background(self, *, llm: bool = False) -> None:
         """Scan off the main thread so the UI is alive while it runs."""
         self.scanning = True
 
         def work() -> None:
             try:
-                self.session.scan()
+                self.session.scan(llm=llm)
             except Exception as exc:
                 self.note(f"scan failed: {exc}")
             finally:
@@ -594,14 +611,14 @@ class App:
                 self._dirty = True          # keep "scanning…" alive
 
 
-def run_screen(session: Session, *, autoscan: bool = True,
+def run_screen(session: Session, *, scan_on_open: str | None = None,
                stream=None) -> Session:
     """Drive a session full-screen. Restores the terminal whatever happens."""
     with Terminal(stream) as term:
         app = App(session=session, term=term)
         session.writer = app.emit
-        if autoscan:
-            app.scan_in_background()
+        if scan_on_open:
+            app.scan_in_background(llm=scan_on_open == "llm")
         try:
             app.run()
         except KeyboardInterrupt:

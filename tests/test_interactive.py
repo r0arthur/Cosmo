@@ -164,9 +164,10 @@ def test_repl_loop_runs_commands(tmp_path):
     lines = iter(["/threshold high", "/status", ""])
     outputs = []
 
-    # autoscan off so the loop is exercised without a live provider.
+    # Opening a session no longer scans, so the loop is exercised without a
+    # live provider by default.
     s = run_repl(str(tmp_path), read=lambda prompt: next(lines),
-                 write=outputs.append, autoscan=False)
+                 write=outputs.append)
     assert s.effective_threshold() == "high"
     assert any("threshold: high" in o for o in outputs)
 
@@ -474,3 +475,117 @@ def test_severity_orders_the_walk(tmp_path):
     order = [f.id for f in s.ordered_findings()]
     assert order[:2] == ["f0", "f1"]          # the two HIGHs first
     assert set(order[2:]) == {"f2", "f3", "f4"}
+
+
+# --- scanning is something you ask for --------------------------------------
+
+def test_opening_a_session_does_not_scan(tmp_path):
+    """Opening a session used to run a full review — model call included —
+    before the user had typed anything. "Open a session" and "send my code to a
+    vendor" should not be the same gesture."""
+    (tmp_path / "app.py").write_text("x = 1\n")
+    called = []
+    s = run_repl(str(tmp_path), read=lambda p: "", write=lambda m: None)
+    assert not s.scanned
+    assert s.findings == []
+
+
+def test_scan_runs_the_static_scanners_without_a_provider(tmp_path):
+    s = _session(tmp_path, data={"incremental": {"enabled": False}})
+    seen = {}
+
+    def scanner(target, cfg, provider=None, static_only=False):
+        seen["provider"], seen["static_only"] = provider, static_only
+        return _report(target, skipped=["model review not requested"])
+
+    s.scanner = scanner
+    out = dispatch(s, "/scan")
+    assert seen["static_only"] is True
+    assert seen["provider"] is None          # not even resolved
+    assert "scan complete" in out
+    assert s.scanned
+
+
+def test_scan_llm_asks_for_the_model(tmp_path, monkeypatch):
+    import cosmo.providers.registry as registry
+
+    class _Ready:
+        name = "fake"
+        vendor = "local"
+        exports_source = True
+        roles = {"primary_review"}
+
+        def available(self):
+            return True
+
+    monkeypatch.setattr(registry, "resolve_primary",
+                        lambda cfg, **kw: (_Ready(), []))
+    s = _session(tmp_path, data={"incremental": {"enabled": False}})
+    seen = {}
+
+    def scanner(target, cfg, provider=None, static_only=False):
+        seen["static_only"] = static_only
+        return _report(target)
+
+    s.scanner = scanner
+    announced: list[str] = []
+    s.writer = announced.append
+    dispatch(s, "/scan llm")
+    assert seen["static_only"] is False
+    # The moment the target's source leaves the machine is announced before it
+    # happens, and names the provider it goes to.
+    assert any("source is sent" in m and "model:fake" in m for m in announced)
+
+
+def test_a_static_scan_says_nothing_leaves_the_machine(tmp_path):
+    s = _session(tmp_path, data={"incremental": {"enabled": False}})
+    s.scanner = lambda *a, **k: _report(str(tmp_path))
+    announced: list[str] = []
+    s.writer = announced.append
+    dispatch(s, "/scan")
+    assert any("no model, no egress" in m for m in announced)
+
+
+def test_scan_llm_refuses_when_no_provider_can_run(tmp_path, monkeypatch):
+    """Better to say why than to silently produce a static-only result the
+    operator believes was reviewed by a model."""
+    import shutil as _shutil
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
+
+    s = _session(tmp_path)
+    out = dispatch(s, "/scan llm")
+    assert "cannot run the model review" in out
+    assert "ANTHROPIC_API_KEY" in out
+    assert "/scan on its own" in out         # names the thing that does work
+    assert not s.scanned
+
+
+def test_scan_reports_what_it_skipped(tmp_path):
+    """The coverage contract holds at the moment the operator is looking."""
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(str(tmp_path),
+                                        skipped=["static:trivy (not installed)"])
+    out = dispatch(s, "/scan")
+    assert "skipped: static:trivy (not installed)" in out
+
+
+def test_an_unknown_scan_argument_is_rejected(tmp_path):
+    assert "unknown argument" in dispatch(_session(tmp_path), "/scan bogus")
+
+
+def test_status_says_nothing_has_been_scanned(tmp_path):
+    out = dispatch(_session(tmp_path), "/status")
+    assert "not scanned yet" in out
+    assert "/scan llm" in out
+
+
+def test_a_rescan_resets_the_cursor(tmp_path):
+    """The old cursor pointed into a list that no longer exists."""
+    s = _walkable(tmp_path)
+    dispatch(s, "/next 3")
+    assert s.cursor == 3
+    s.scanner = lambda *a, **k: _report(str(tmp_path))
+    dispatch(s, "/scan")
+    assert s.cursor == 0
