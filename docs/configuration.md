@@ -198,7 +198,7 @@ skills:
 ```
 
 Repo skills live in `.cosmo/skills/*.md` and need no config at all. See
-[usage.md § Review skills](usage.md#review-skills) for the file format and the
+[usage.md — Review skills](usage.md#review-skills) for the file format and the
 trust split.
 
 ### `llm_audit` — *safety*
