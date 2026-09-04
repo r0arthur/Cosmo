@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Default model provider (§8). Absent → the LLM stage degrades gracefully to a no-op.
+# Default model provider. Absent → the LLM stage degrades gracefully to a no-op.
 claude = ["anthropic>=0.40"]
 dev = ["pytest>=7"]
 
