@@ -700,27 +700,64 @@ believe a model had reviewed. Both print what they skipped.
 
 ### The session screen
 
-On a terminal the session is full-screen. The scan runs in the background, so
-the list fills in while the UI stays responsive:
+On a terminal the session is full-screen. `/scan` runs on its own thread, so the
+screen keeps repainting live while it works — a compact tick per scanner as it
+finishes, not a frozen terminal followed by a wall of raw findings:
 
 ```
-╭─ cosmo ──────────────────────────────────────────── 156 findings ╮
-│  target  .                                                       │
-│  floor  medium    model  claude (unavailable)    skipped  7 stages│
-├──────────────────────────────────────────────────────────────────┤
-│ ▸ HIGH      Secret leaked: generic-api-key    …/lib/posthog.tsx:10│
-│   HIGH      JWT token detected              …/service/license.rs:182│
-│   MEDIUM    CVE-2023-32681: python-requests       requirements.txt:1│
-├──────────────────────────────────────────────────────────────────┤
-│ › /report markdown                                               │
-╰──────────────────────────────────────────────────────────────────╯
- ↑↓ select · ⏎ detail · tab complete · ^P history · /help · ^C quit
+╭─ cosmo ──────────────────────────────────────────── scanning… ╮
+│  target  .                                                    │
+│  floor  medium  model  claude — /scan llm unavailable  skipped 0 stages │
+├─────────────────────────────────────────────────────────────────┤
+│  Scanning…                                                     │
+│                                                                │
+│  ✓ gitleaks       3 findings                                  │
+│  ✓ semgrep        12 findings                                 │
+│  ✓ bandit         4 findings                                  │
+│  ⊘ trivy          skipped                                     │
+├─────────────────────────────────────────────────────────────────┤
+│ › ▏                                                            │
+╰─────────────────────────────────────────────────────────────────╯
+ ↑↓ scroll · esc back · /help · ^C quit
 ```
 
-**The header carries coverage.** `skipped 7 stages` sits next to the finding
-count on purpose: a findings list is the easiest place in the whole tool to read
-an incomplete scan as a clean one. `model` is the provider actually resolved,
-and says so when it cannot run.
+Once every scanner has finished, the same pane shows the boxed report — the
+line ticks stay above it, scrollable, like ordinary terminal scrollback:
+
+```
+│  ┌─ SECURITY SCAN COMPLETE ─────────────────┐                  │
+│  │ Target                                 . │                  │
+│  │ Scanners                               7 │                  │
+│  │ Succeeded                              6 │                  │
+│  │ Failed                                 1 │                  │
+│  │ Findings                             155 │                  │
+│  │ HIGH                                   9 │                  │
+│  │ MEDIUM                               142 │                  │
+│  │ LOW                                    4 │                  │
+│  └──────────────────────────────────────────┘                  │
+│                                                                │
+│  Scanner failures (findings below are still from everything    │
+│  that succeeded — a crash does not discard the rest):          │
+│    WARNING: trivy failed: exit 137                             │
+│                                                                │
+│  Top findings:                                                 │
+│    HIGH     Secret leaked: generic-api-key                     │
+│             tabby/ee/tabby-ui/lib/posthog.tsx:10                │
+│    HIGH     JWT token detected                                 │
+│             tabby/ee/tabby-webserver/src/service/license.rs:182│
+│                                                                │
+│  Use /report for the full write-up                             │
+│  Use /findings to browse every finding                         │
+```
+
+**The header carries coverage**, not just a finding count — `skipped 0 stages`
+sits next to it on purpose: a findings list is the easiest place in the whole
+tool to read an incomplete scan as a clean one. **`model` is informational, not
+a gate.** `/scan` (no `llm`) needs no provider at all and runs the same whether
+one is configured or not; the qualifier only matters to `/scan llm`, which is
+why it renders as a quiet aside rather than in the same weight as the rest of
+the header — `model claude (unavailable)` used to read as if the whole session
+were broken.
 
 | Key | Does |
 |---|---|
@@ -761,7 +798,8 @@ what that layer returns.
 | `/scope [program=… includes=… rate=N]` | Declare an authorized external target |
 | `/disclose <finding-id>` | Draft + **queue** a disclosure — sends nothing |
 | `/report [cli\|markdown\|sarif\|pr]` | Export findings **with the session's coverage** |
-| `/scan [llm]` | Run the scanners now; `llm` adds the model review |
+| `/findings` | Every finding from the last scan, most severe first — an alias onto `/report cli` |
+| `/scan [llm] [--json\|--sarif]` | Run the scanners now; `llm` adds the model review |
 | `/tools` | Which static scanners this machine has, and their versions (offline) |
 | `/next [n]` | Move to the next finding and show it in full |
 | `/previous [n]` | Move to the previous finding and show it in full |
@@ -782,6 +820,21 @@ stages that is.
 `/report pr` is the *gated* public version, and only that one withholds
 sensitive findings. (`markdown` previously aliased `pr`, which meant asking for
 markdown in an operator session silently handed back the redacted comment.)
+
+**`/scan` returns a real result, kept on the session.** It waits for every
+scanner before returning — there is no path where the report is built before
+collection finishes — then prints a severity breakdown, per-scanner
+succeeded/failed/skipped counts, and the top findings, and keeps the full
+`ScanSummary` on the session as `last_scan`. `/report` and `/findings`
+afterward answer from it; neither re-invokes the scanners. `/scan --json`
+gives the same summary as structured data (target, duration, per-scanner
+status, counts); `/scan --sarif` gives SARIF for the findings themselves.
+
+**A scanner's outcome is tracked separately from its finding count.** A
+scanner that crashed and one that ran clean are both "0 findings" if you only
+count results — `scanners_failed`/`scanners_skipped` are what keep a crash
+from reading as a clean scan. A failure shows as `WARNING: <tool> failed:
+<reason>` in the report, and does not discard what the other scanners found.
 
 **`/next` and `/previous` share the screen's selection.** Both they and the
 arrow keys move one cursor over one ordering (severity first, then location), so

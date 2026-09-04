@@ -390,3 +390,166 @@ def test_the_severity_badge_is_not_repeated_down_a_wrapped_title():
     app.handle(ENTER)
     body = strip("\n".join(_frame(app)))
     assert body.count("HIGH") == 1
+
+
+# --- /scan runs in the background, not blocking the UI loop -----------------
+#
+# Regression coverage for the actual bug: `dispatch()` used to run `/scan`
+# inline on the UI thread — while it blocked, `App.run()`'s loop was not
+# executing at all, so nothing repainted and no live per-tool progress ever
+# reached the screen for however long the scanners took.
+
+def _slow_scanner(target, cfg, provider=None, static_only=False, events=None):
+    import time as _time
+
+    from cosmo.events import Emitter
+    from cosmo.findings import Report
+    ev = Emitter(events)
+    ev.output("gitleaks: 1 finding(s)", stage="static", tool="gitleaks", findings=1)
+    _time.sleep(0.15)
+    ev.output("semgrep: 0 finding(s)", stage="static", tool="semgrep", findings=0)
+    return Report(target=target, findings=[_finding(0)])
+
+
+def test_scan_does_not_block_the_caller():
+    """The UI thread must be able to keep handling keys/repainting while a
+    scan runs — proven by `/scan` returning control almost immediately,
+    with the actual work still in flight on its own thread."""
+    import time as _time
+
+    app = _app([])
+    app.session.scanner = _slow_scanner
+    for ch in "/scan":
+        app.handle(ch)
+    started = _time.monotonic()
+    app.handle(ENTER)
+    elapsed = _time.monotonic() - started
+    assert elapsed < 0.1, "submitting /scan blocked the UI thread"
+    assert app.scanning is True
+
+
+def test_live_progress_appears_before_the_scan_finishes():
+    import time as _time
+
+    app = _app([])
+    app.session.scanner = _slow_scanner
+    app.session.writer = app.emit          # what run_screen() wires in production
+    for ch in "/scan":
+        app.handle(ch)
+    app.handle(ENTER)
+    deadline = _time.monotonic() + 2
+    while _time.monotonic() < deadline and "gitleaks" not in "\n".join(app.out_lines):
+        _time.sleep(0.01)
+    assert any("gitleaks" in l for l in app.out_lines)
+    assert app.scanning is True          # semgrep's tick has not landed yet
+    assert app.view == OUTPUT
+
+
+def test_the_final_report_appears_once_scanning_completes():
+    import time as _time
+
+    app = _app([])
+    app.session.scanner = _slow_scanner
+    for ch in "/scan":
+        app.handle(ch)
+    app.handle(ENTER)
+    deadline = _time.monotonic() + 2
+    while _time.monotonic() < deadline and app.scanning:
+        _time.sleep(0.01)
+    assert not app.scanning
+    body = "\n".join(app.out_lines)
+    assert "SECURITY SCAN COMPLETE" in body
+    assert "Use /report" in body
+
+
+def test_the_prompt_is_still_usable_after_a_scan_completes():
+    """The regression this whole fix is about: does the interactive prompt
+    come back usable, or does the session stay stuck?"""
+    import time as _time
+
+    app = _app([])
+    app.session.scanner = _slow_scanner
+    for ch in "/scan":
+        app.handle(ch)
+    app.handle(ENTER)
+    deadline = _time.monotonic() + 2
+    while _time.monotonic() < deadline and app.scanning:
+        _time.sleep(0.01)
+    assert app.running
+    for ch in "/status":
+        app.handle(ch)
+    assert app.text == "/status"
+    app.handle(ENTER)
+    assert "target:" in "\n".join(app.out_lines)
+
+
+def test_a_second_scan_is_refused_while_one_is_running():
+    import time as _time
+
+    app = _app([])
+    app.session.scanner = _slow_scanner
+    for ch in "/scan":
+        app.handle(ch)
+    app.handle(ENTER)
+    assert app.scanning
+    for ch in "/scan":
+        app.handle(ch)
+    app.handle(ENTER)
+    assert "already running" in app.status
+    deadline = _time.monotonic() + 2
+    while _time.monotonic() < deadline and app.scanning:
+        _time.sleep(0.01)
+
+
+def test_ctrl_c_during_a_scan_stops_the_scanner_processes(monkeypatch):
+    """A scan runs on a daemon thread; without this it would keep running
+    scanner subprocesses invisibly after the terminal — and the shell prompt
+    behind it — is already back.
+
+    `cancel_scan()` imports `terminate_running_scanners` locally (fresh on
+    every call, not a module-level name on `screen`), so the patch has to
+    land on the real source it resolves from, or this would pass whether or
+    not the call actually happened.
+    """
+    import cosmo.static.prefilter as prefilter
+
+    terminated = []
+    # `prefilter` re-exports the name from `runners` at prefilter's own import
+    # time; patching `runners.terminate_running_scanners` afterward would not
+    # touch prefilter's already-bound copy, which is what `cancel_scan()`'s
+    # local import actually resolves.
+    monkeypatch.setattr(prefilter, "terminate_running_scanners",
+                        lambda: terminated.append(1) or 0)
+    app = _app([])
+    app.scanning = True
+    app.handle(INTERRUPT)
+    assert terminated == [1]
+    assert not app.running
+
+
+def test_ctrl_c_without_a_running_scan_does_not_touch_the_scanner_module():
+    app = _app([])
+    assert not app.scanning
+    app.handle(INTERRUPT)          # must not raise for lack of anything to cancel
+    assert not app.running
+
+
+# --- the header does not read as "the app is broken" ------------------------
+
+def test_an_unavailable_provider_is_a_quiet_qualifier_not_an_alarm(monkeypatch):
+    """Both design passes flagged the same failure: `model claude
+    (unavailable)` rendered in one uniform bright run, indistinguishable in
+    weight from target/floor either side of it — reading as if the whole
+    session were broken rather than "the one thing /scan llm needs"."""
+    import shutil as _shutil
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
+    app = _app([])
+    cell = app._model_cell()
+    # The provider name and the qualifier must be two distinct coloured runs,
+    # not one uniform string — that is the whole fix.
+    assert "claude" in strip(cell)
+    assert "/scan llm unavailable" in strip(cell)
+    from cosmo.ansi import C
+    assert cell.count(C["reset"]) >= 2       # at least two separately-closed spans
