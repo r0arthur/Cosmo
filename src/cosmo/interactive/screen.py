@@ -171,21 +171,21 @@ class Terminal:
         return ch if ch.isprintable() or ch == " " else None
 
 
-def _model_label(session: Session) -> str:
-    """The provider the session would actually use, short enough for a header.
+def _model_status(session: Session) -> tuple[str, bool]:
+    """(provider name, whether it can actually run right now).
 
-    `session_model or "default"` was a literal rather than a lookup: it said
-    "default" whatever the config had chosen, and never showed that the
-    provider could not run — the one thing worth knowing before trusting a
-    finding list.
+    `session_model or "default"` used to be a literal rather than a lookup: it
+    said "default" whatever the config had chosen, and never showed that the
+    provider could not run — the one thing worth knowing before trusting
+    `/scan llm`.
     """
     from ..providers.registry import resolve_primary
     try:
         provider, _ = resolve_primary(session.config,
                                       session_model=session.session_model)
     except Exception:
-        return "unresolved"
-    return provider.name if provider.available() else f"{provider.name} (unavailable)"
+        return "unresolved", False
+    return provider.name, provider.available()
 
 
 # --- application state ------------------------------------------------------
@@ -249,6 +249,10 @@ class App:
             return
         self._dirty = True
         if key == INTERRUPT:
+            # A scan runs on a daemon thread; without this it would keep
+            # running scanner subprocesses invisibly after the terminal (and
+            # the shell prompt behind it) is already back.
+            self.cancel_scan()
             self.running = False
             return
         if key == SUSPEND:
@@ -347,6 +351,9 @@ class App:
         if line in ("/quit", "/exit"):
             self.running = False
             return
+        if line.split()[0] == "/scan":
+            self._run_scan(line)
+            return
         self._run(line)
 
     def _run(self, line: str) -> None:
@@ -357,12 +364,6 @@ class App:
             result = dispatch(self.session, line)
         except Exception as exc:                # a command must not kill the UI
             result = f"error: {exc}"
-        if line.split()[0] in ("/scan",):
-            # A scan replaces the list; show it rather than a paragraph about it.
-            self.view = FINDINGS
-            self.top = 0
-            self.note(str(result).splitlines()[0])
-            return
         if self.session.cursor != was_at:
             # A command that moved the cursor (`/next`, `/previous`) is a
             # navigation gesture, so land on the finding rather than on a page
@@ -372,6 +373,52 @@ class App:
             self.status = ""
             return
         self.show(line, result)
+
+    def _run_scan(self, line: str) -> None:
+        """`/scan` runs on a background thread so the UI stays alive to show
+        it happening — the bug this exists to fix: `dispatch()` used to run
+        `/scan` inline on the UI thread, which blocked the whole event loop
+        (no redraw, no live per-tool progress, nothing) for as long as the
+        scanners took, then dumped the raw findings list in one frame.
+
+        `dispatch(self.session, line)` is still the one call that actually
+        runs it — this only changes *where* that call happens, not what it
+        does, so `/scan`, `/scan llm`, `/scan --json` and `/scan --sarif` all
+        still go through the same guarded command `/report`, `/next`, and the
+        plain REPL use.
+        """
+        if self.scanning:
+            self.note("a scan is already running — wait for it to finish")
+            return
+        with self._lock:
+            self.out_lines = []
+        self.out_title, self.out_top, self.view = "Scanning…", 0, OUTPUT
+        self.scanning = True
+        self.status = ""
+
+        def work() -> None:
+            try:
+                result = dispatch(self.session, line)
+            except Exception as exc:             # a command must not kill the UI
+                result = f"error: {exc}"
+            with self._lock:
+                if self.out_lines:
+                    self.out_lines.append("")
+                self.out_lines += str(result).splitlines()
+            self.out_title = str(result).splitlines()[0] if result else "Scan"
+            self.scanning = False
+            self._dirty = True
+
+        threading.Thread(target=work, name="cosmo-scan-cmd", daemon=True).start()
+
+    def cancel_scan(self) -> None:
+        """Stop any scanner subprocesses in flight. Called on Ctrl-C: the scan
+        thread is a daemon and would otherwise keep running invisibly after
+        control has been handed back to the shell."""
+        if not self.scanning:
+            return
+        from ..static.prefilter import terminate_running_scanners
+        terminate_running_scanners()
 
     def show(self, title: str, body: str) -> None:
         with self._lock:
@@ -442,22 +489,42 @@ class App:
         return (f"╭{left}{'─' * gap} {self._c(right, 'gray')} ─")[:0] + \
                f"╭{left}{'─' * gap}{self._c(' ' + right + ' ', 'gray')}╮"
 
+    def _model_cell(self) -> str:
+        """`model claude` in the ordinary weight; unavailability as a quiet
+        aside rather than an alarm. Both messages carried the same failure
+        mode: `model claude (unavailable)` rendered in one uniform bright run,
+        indistinguishable in weight from the target/floor either side of it,
+        which reads as "the session is broken" rather than "the one thing
+        `/scan llm` needs isn't set up" — `/scan` on its own needs none of it.
+        """
+        name, available = _model_status(self.session)
+        cell_text = self._c(name, "white")
+        if not available:
+            cell_text += self._c(" — /scan llm unavailable", "faint")
+        return cell_text
+
     def _meta(self, inner: int) -> list[str]:
         st = self.session
         snapshot = st.snapshot_report()
         skipped = len(snapshot.skipped_stages)
+        # Most cells are a plain (label, value) pair, coloured uniformly; the
+        # model cell needs two colours in one cell (name, then a muted
+        # qualifier), so it is pre-rendered and passed through as-is.
         rows = [
-            [("target", clip(shorten_paths(str(st.target), keep=3), inner - 12))],
-            [("floor", st.effective_threshold()),
-             ("model", _model_label(st)),
+            [("target", clip(shorten_paths(str(st.target), keep=3), inner - 12), False)],
+            [("floor", st.effective_threshold(), False),
+             ("model", self._model_cell(), True),
              # Coverage in the header, not buried in /report: a findings list is
              # the easiest place in the tool to read an incomplete scan as clean.
-             ("skipped", f"{skipped} stage{'' if skipped == 1 else 's'}")],
+             ("skipped", f"{skipped} stage{'' if skipped == 1 else 's'}", False)],
         ]
         out = []
         for row in rows:
-            cells = "    ".join(
-                f"{self._c(k, 'faint')}  {self._c(str(v), 'white')}" for k, v in row)
+            parts = []
+            for k, v, prerendered in row:
+                value = v if prerendered else self._c(str(v), "white")
+                parts.append(f"{self._c(k, 'faint')}  {value}")
+            cells = "    ".join(parts)
             out.append(f"│  {cell(cells, inner - 2)}│")
         return out
 
@@ -556,10 +623,21 @@ class App:
         head = f"  {self._c(self.out_title, 'cyan')}"
         more = max(0, len(lines) - self.out_top - (height - 2))
         window = lines[self.out_top:self.out_top + height - 2]
-        out = [head, ""] + [f"  {fit(ln, inner - 4, collapse=False)}" for ln in window]
+        out = [head, ""] + [f"  {self._fit_indented(ln, inner - 4)}" for ln in window]
         if more:
             out = out[:height - 1] + [f"  {self._c(f'… {more} more line(s) — ↑↓ to scroll', 'faint')}"]
         return out[:height]
+
+    def _fit_indented(self, line: str, budget: int) -> str:
+        """`fit(..., collapse=False)` still strips leading whitespace — it has
+        to, for a line that has none, but that took the indent off report
+        lines that use it to set a location apart from the finding above it
+        (`format_report`'s "top findings" block). Preserve whatever leading
+        spaces the caller put there, same as `output/cli_text.py` already does
+        by keeping its own indent outside the `fit()` call."""
+        stripped = line.lstrip(" ")
+        indent = line[: len(line) - len(stripped)]
+        return indent + fit(stripped, max(1, budget - len(indent)), collapse=False)
 
     def _prompt(self, inner: int) -> str:
         shown = clip(self.text, inner - 6) if width(self.text) > inner - 6 else self.text
@@ -582,19 +660,13 @@ class App:
     # --- loop ---------------------------------------------------------------
 
     def scan_in_background(self, *, llm: bool = False) -> None:
-        """Scan off the main thread so the UI is alive while it runs."""
-        self.scanning = True
-
-        def work() -> None:
-            try:
-                self.session.scan(llm=llm)
-            except Exception as exc:
-                self.note(f"scan failed: {exc}")
-            finally:
-                self.scanning = False
-                self._dirty = True
-
-        threading.Thread(target=work, name="cosmo-scan", daemon=True).start()
+        """The `--scan`/`--scan llm` scan-on-open. Routed through `_run_scan`
+        — the same command a typed `/scan` runs — rather than calling
+        `session.scan()` directly a second way: this path used to leave
+        `view` on the (still-empty) findings list and never show a report at
+        all once the scan finished, the identical gap `/scan` itself had via
+        a different door."""
+        self._run_scan("/scan llm" if llm else "/scan")
 
     def run(self) -> None:
         while self.running:

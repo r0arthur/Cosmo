@@ -21,6 +21,7 @@ from ..output import (render_cli, render_finding, render_pr_comment,
                       render_report, render_sarif)
 from ..findings import Report
 from ..waiver import Baseline
+from .scan_summary import format_report
 from .session import Session
 
 _LEVELS = ["info", "low", "medium", "high", "critical"]
@@ -348,6 +349,14 @@ def _cmd_audit(session: Session, args) -> str:
             f"{provider.name}. Keep typing — /status shows progress, findings stream in.")
 
 
+def _cmd_findings(session: Session, args) -> str:
+    """— browse every finding from the last scan, most severe first"""
+    # A thin alias onto `/report cli`'s exact rendering rather than a second
+    # implementation: this is what "detailed findings" already meant, it just
+    # had no name of its own to be asked for by.
+    return _cmd_report(session, ["cli"])
+
+
 def _cmd_report(session: Session, args) -> str:
     """[format] — export as cli|markdown|sarif|pr (pr goes through the gate)"""
     fmt = (args[0] if args else "cli").lower()
@@ -369,11 +378,22 @@ def _cmd_report(session: Session, args) -> str:
     return render_cli(report, color=False)
 
 
+_SCAN_LLM_WORDS = {"llm", "model", "full", "ai"}
+
+
 def _cmd_scan(session: Session, args) -> str:
-    """[llm] — run the scanners now; add `llm` to include the model review"""
-    llm = bool(args) and args[0].lower() in ("llm", "model", "full", "ai")
-    if args and not llm:
-        return f"unknown argument {args[0]!r}; use /scan or /scan llm"
+    """[llm] [--json|--sarif] — run the scanners; `llm` adds the model review"""
+    tokens = [a.lower() for a in args]
+    llm = any(t in _SCAN_LLM_WORDS for t in tokens)
+    as_json = "--json" in tokens
+    as_sarif = "--sarif" in tokens
+    unknown = [a for a, t in zip(args, tokens)
+              if t not in _SCAN_LLM_WORDS and t not in ("--json", "--sarif")]
+    if unknown:
+        return (f"unknown argument {unknown[0]!r}; use /scan, /scan llm, "
+                f"/scan --json, or /scan --sarif")
+    if as_json and as_sarif:
+        return "pick one of --json or --sarif, not both"
 
     if llm:
         # Naming the provider before the call, not after: this is the moment the
@@ -389,15 +409,29 @@ def _cmd_scan(session: Session, args) -> str:
     else:
         session.emit("scanning with the static scanners only (no model, no egress) …")
 
+    # Live per-tool progress streams through `session.emit` as each scanner
+    # finishes (wired inside `Session.scan`) — this call blocks until every one
+    # of them has, in registry order or not, before anything below runs.
     report = session.scan(llm=llm)
-    actionable = [f for f in report.findings if not f.waived]
-    lines = [f"scan complete — {len(actionable)} finding(s) at threshold "
-             f"{session.effective_threshold()}"]
-    # The coverage contract holds here too: a scan is only as strong as the
-    # stages behind it, and this is the moment the operator is looking.
-    for skip in report.skipped_stages:
-        lines.append(f"  skipped: {skip}")
-    return "\n".join(lines)
+
+    if as_sarif:
+        return render_sarif(report)
+    if as_json:
+        import dataclasses
+        import json
+        summary = session.last_scan
+        return json.dumps({
+            "target": summary.target, "llm": summary.llm,
+            "duration_s": round(summary.duration, 3),
+            "scanners_run": summary.scanners_run,
+            "scanners_succeeded": summary.scanners_succeeded,
+            "scanners_failed": summary.scanners_failed,
+            "scanners_skipped": summary.scanners_skipped,
+            "scanners": [dataclasses.asdict(s) for s in summary.scanners],
+            "total_findings": summary.total, "counts": summary.counts,
+            "skipped_stages": report.skipped_stages,
+        }, indent=2)
+    return format_report(session.last_scan)
 
 
 def _cmd_next(session: Session, args) -> str:
@@ -478,6 +512,7 @@ _COMMANDS = {
     "disclose": _cmd_disclose,
     "audit": _cmd_audit,
     "report": _cmd_report,
+    "findings": _cmd_findings,
     "tools": _cmd_tools,
     "scan": _cmd_scan,
     "next": _cmd_next,
