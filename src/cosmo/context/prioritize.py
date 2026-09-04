@@ -1,4 +1,4 @@
-"""Turn extracted signals into prioritization hints (architecture §4).
+"""Turn extracted signals into prioritization hints.
 
 Two outputs, both prioritization-only — never ground truth:
 
@@ -8,7 +8,7 @@ Two outputs, both prioritization-only — never ground truth:
     lower confidence, suppress a finding, or create one.
   * partial-fix hints: a closed/fixed issue that touched a changed file is a
     prompt to check whether the same pattern exists elsewhere — a hint, not an
-    assumption of vulnerability (§4).
+    assumption of vulnerability.
 """
 from __future__ import annotations
 

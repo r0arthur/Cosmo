@@ -1,4 +1,4 @@
-"""Fuzzing-engine integration (architecture §7).
+"""Fuzzing-engine integration.
 
 cosmo *orchestrates* an existing coverage-guided engine per language — it does
 not reimplement fuzzing. This module maps a language to the engine cosmo drives
@@ -43,7 +43,7 @@ def build_invocation(engine: Engine, harness_path: str, corpus_dir: str,
                      max_seconds: int) -> list[str]:
     """A representative, engine-appropriate argv. The hard duration cap is baked
     into the invocation itself so a run cannot outlive it even if the caller's
-    own timer misfires — defense in depth around the §7 'hard duration cap'."""
+    own timer misfires — defense in depth around the 'hard duration cap'."""
     if max_seconds <= 0:
         raise ValueError("max_seconds must be positive; a fuzz run needs a bounded cap")
     if engine.name == "Atheris":

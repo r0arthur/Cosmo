@@ -1,4 +1,4 @@
-"""Interactive session state (architecture §7 — interactive command layer).
+"""Interactive session state (interactive command layer).
 
 The same engine as batch mode: a session runs `run_review` and answers follow-up
 questions from in-session findings state without re-scanning. The critical design
@@ -27,7 +27,7 @@ class Session:
     config: Config
     target: str
     findings: list[Finding] = field(default_factory=list)
-    session_model: str | None = None          # /model — a preference (§8 resolution)
+    session_model: str | None = None # /model — a preference (resolution)
     threshold_override: str | None = None      # /threshold — a preference floor
     fuzz_duration: int | None = None           # /duration — capped by fuzzing.max_duration
     running_campaigns: dict[str, int] = field(default_factory=dict)  # name -> remaining s
@@ -109,7 +109,7 @@ class Session:
         return self.loaded_extensions().command_table().get(name)
 
     def external_mode(self):
-        """The §9 external-target driver for this session, created on first use."""
+        """The external-target driver for this session, created on first use."""
         if self.external is None:
             from ..external import ExternalTargetMode
             self.external = ExternalTargetMode(config=self.config)
@@ -125,7 +125,7 @@ class Session:
 
     def scan(self, *, llm: bool = True) -> Report:
         """Run the same pipeline batch mode runs, honoring the session model +
-        threshold. Provider resolution still applies the §8 data-governance gate;
+        threshold. Provider resolution still applies the data-governance gate;
         a session `/model` cannot fan a sensitive repo's source off-box.
 
         Builds a `ScanSummary` from the same event stream `run_review` already

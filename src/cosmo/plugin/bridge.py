@@ -1,4 +1,4 @@
-"""Plugin ⇄ engine bridge (architecture §17, build step 20).
+"""Plugin ⇄ engine bridge (build step 20).
 
 The integration point a Claude Code plugin/skill uses to drive cosmo *in
 process*: it opens the same `Session` the interactive REPL and batch mode use,
@@ -8,7 +8,7 @@ path — the plugin is a caller, never a re-implementation.
 Two safety properties are load-bearing and covered by tests:
 
 1. **Operator config is the ceiling.** `open_session` loads config through
-   `load_config`, which applies the §15 trust tiers: the operator/org config is
+   `load_config`, which applies the trust tiers: the operator/org config is
    the ceiling and the target repo may only *tighten* safety keys. A plugin
    invocation supplies the operator config path — it cannot inject a safety-tier
    value, because it never bypasses `load_config`.
@@ -20,7 +20,7 @@ Two safety properties are load-bearing and covered by tests:
 
 Importing this module never requires Claude Code to be installed — cosmo depends
 on the auth/session layer as a library and degrades gracefully without it, which
-is exactly the "reuse, don't fork" relationship §17 calls for.
+is exactly the "reuse, don't fork" relationship calls for.
 """
 from __future__ import annotations
 

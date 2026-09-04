@@ -1,8 +1,8 @@
-"""Context ingestion (architecture §4, build step 11).
+"""Context ingestion (build step 11).
 
 Reads issues/comments/discussions to prioritize review. Produces a structured
 signal set (never raw untrusted text, never ground truth) that nudges finding
-prioritization and surfaces partial-fix hints. Reading only — never posts (§12).
+prioritization and surfaces partial-fix hints. Reading only — never posts.
 """
 from .extract import ExtractedSignal, extract_all, extract_signal
 from .ingest import ContextItem, fetch_context, repo_of

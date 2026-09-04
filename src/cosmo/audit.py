@@ -1,4 +1,4 @@
-"""Whole-project LLM audit — chunked per-file review (extends architecture §1).
+"""Whole-project LLM audit — chunked per-file review (extends).
 
 The batch LLM review (`provider.review`) sends the whole diff to the model as a
 single prompt. That fits a PR or a small target, but a whole large codebase

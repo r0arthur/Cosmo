@@ -1,4 +1,4 @@
-"""Zero-day fuzzing campaign — step 16 (architecture §7)."""
+"""Zero-day fuzzing campaign — step 16."""
 import pytest
 
 from cosmo.config import Config

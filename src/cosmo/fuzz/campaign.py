@@ -1,4 +1,4 @@
-"""Fuzz campaign orchestration (architecture §7).
+"""Fuzz campaign orchestration.
 
 A separate, heavier, **manual-only** capability. This module is the guardrailed
 front door: it enforces the hard duration cap, refuses to run against anything
@@ -21,7 +21,7 @@ from .triage import Crash, classify_severity, dedupe_crashes
 
 
 class DurationNotSet(Exception):
-    """Raised when a campaign is started with no duration ever set (§7): the caller
+    """Raised when a campaign is started with no duration ever set: the caller
     must prompt for one rather than silently defaulting."""
 
 
@@ -32,7 +32,7 @@ class ConfirmationRequired(Exception):
 
 class ExternalTargetRefused(Exception):
     """Raised if a campaign is pointed at anything but the sandbox-internal build.
-    §7 hard scope constraint: the fuzzer has no code path that accepts an
+     hard scope constraint: the fuzzer has no code path that accepts an
     external URL as a target."""
 
 
@@ -54,7 +54,7 @@ class CampaignResult:
 
 
 def resolve_duration(config: Config, requested, *, confirmed: bool = False) -> int:
-    """Resolve and cap the campaign duration (§7 guardrails).
+    """Resolve and cap the campaign duration (guardrails).
 
     - `requested` unset (None) → DurationNotSet: the caller prompts, never defaults.
     - capped at `fuzzing.max_duration` (a safety-tier setting a repo can only lower).
@@ -102,7 +102,7 @@ def run_campaign(
     - `generator` / `build_check` — harness drafting + compile gate (see harness.py)
     - `fuzz_runner(harness, max_seconds) -> list[Crash]` — drives the real engine
       inside the sandbox; the only component that executes code
-    - `broker` — the §9a egress broker; all runner egress is stamped SANDBOX mode
+    - `broker` — the egress broker; all runner egress is stamped SANDBOX mode
     """
     if not config.get("fuzzing.enabled", False):
         raise PermissionError("fuzzing is disabled in config (safety tier); enable it to run")
@@ -121,7 +121,7 @@ def run_campaign(
             crashes = fuzz_runner(h, max_seconds, broker=broker, mode=Mode.SANDBOX)
             all_crashes.extend(crashes)
     finally:
-        # Always tear down, even on crash — §7 "always tears down after".
+        # Always tear down, even on crash — "always tears down after".
         result.torn_down = True
 
     result.crashes_total = len(all_crashes)

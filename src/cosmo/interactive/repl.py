@@ -1,4 +1,4 @@
-"""Interactive session entry point (architecture §7).
+"""Interactive session entry point.
 
 On a terminal this hands off to the full-screen UI in `screen.py`. Everywhere
 else — a pipe, CI, the test suite — it runs the line-based loop below, which

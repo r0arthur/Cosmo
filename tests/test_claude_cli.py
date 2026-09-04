@@ -1,8 +1,8 @@
-"""Claude-Code-CLI provider — subscription-backed reviewer (architecture §8 + §17).
+"""Claude-Code-CLI provider — subscription-backed reviewer.
 
 Hermetic: the `claude` binary is never invoked; `_run_cli` is monkeypatched.
 The load-bearing property is that using the subscription path does NOT bypass the
-§8 data-governance gate — the diff still goes to Anthropic, so a sensitive repo
+ data-governance gate — the diff still goes to Anthropic, so a sensitive repo
 must gate it exactly like the API provider.
 """
 from cosmo.config import Config
@@ -30,7 +30,7 @@ def test_registered_in_factory():
     assert isinstance(p, ClaudeCLIProvider)
 
 
-# --- the §8 gate is NOT bypassed by the subscription path -------------------
+# --- the gate is NOT bypassed by the subscription path -------------------
 
 def test_gate_blocks_at_sensitive_unless_anthropic_accepted():
     sensitive = Config(data={"providers_policy": {"data_sensitivity": "sensitive",

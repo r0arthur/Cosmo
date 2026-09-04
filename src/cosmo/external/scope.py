@@ -1,4 +1,4 @@
-"""`/scope` declaration parsing + operator clamping (architecture §9).
+"""`/scope` declaration parsing + operator clamping.
 
 A `/scope` declaration is the *only* way an external host becomes reachable, and
 it is mandatory before any recon runs. This module turns a declaration (from

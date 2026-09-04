@@ -1,10 +1,10 @@
-"""Plugin manifest + slash-command surface (architecture §17, build step 20).
+"""Plugin manifest + slash-command surface (build step 20).
 
 Cosmo ships as a Claude Code plugin/skill; it does **not** fork Claude Code. It
 reuses Claude Code's auth/session/tool-use by shelling to the same `cosmo`
 binary that batch mode, the git hook, and the GitHub Action use — so every
-guardrail (config trust tiers §15, the fuzz duration cap §7, the data-governance
-gate §8, the fail-closed public-comment gate §11, the egress broker §9a) is
+guardrail (config trust tiers, the fuzz duration cap, the data-governance
+gate, the fail-closed public-comment gate, the egress broker) is
 enforced in exactly one place and the plugin cannot relax any of it.
 
 The load-bearing property of this module: the plugin's slash-command surface is
@@ -26,7 +26,7 @@ from ..interactive.commands import _COMMANDS
 # `cosmo` binary; the plugin is a thin caller, so the surface is deliberately
 # narrow and identical for every command. Notably absent: a bare `Bash(*)`, any
 # `curl`/network tool, and any `gh ... comment`/post tool — public posting stays
-# behind the §11 gate inside cosmo, never a plugin-granted capability.
+# behind the gate inside cosmo, never a plugin-granted capability.
 ALLOWED_TOOLS = "Bash(cosmo:*), Bash(python -m cosmo:*)"
 
 # Commands that read/refine session state only vs. commands the plugin exposes
@@ -140,12 +140,12 @@ def _review_umbrella() -> CommandSpec:
         "installed, provider unavailable) so a partial run is not mistaken for a "
         "clean bill of health.\n"
         "4. Do NOT post anything to GitHub. Public posting is governed by the "
-        "fail-closed disclosure gate (§11); `--format pr` already shows what "
+        "fail-closed disclosure gate; `--format pr` already shows what "
         "would and would not be posted, with confirmed/high-sensitivity findings "
         "withheld by design.\n\n"
         "cosmo's own guardrails are authoritative — this command cannot relax the "
-        "config trust tiers or the disclosure gate. Sandbox confirmation (§6), "
-        "fuzzing (§7), disclosure (§13), and external-target recon (§9) are "
+        "config trust tiers or the disclosure gate. Sandbox confirmation, "
+        "fuzzing, disclosure, and external-target recon are "
         "reached through their own `/cosmo-*` commands, each still enforced "
         "inside cosmo."
     )

@@ -1,4 +1,4 @@
-"""Generate the on-disk plugin from the code (architecture §17, build step 20).
+"""Generate the on-disk plugin from the code (build step 20).
 
 `sync_plugin(root)` writes `.claude-plugin/plugin.json` and `commands/*.md` from
 the single source of truth (`manifest`), and prunes stale `cosmo-*.md` command

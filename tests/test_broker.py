@@ -1,4 +1,4 @@
-"""Egress broker — the step-7 security boundary (architecture §9a).
+"""Egress broker — the step-7 security boundary.
 
 These tests are the point of the whole design: they assert that "no code path to
 an arbitrary external target" actually holds.

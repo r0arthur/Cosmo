@@ -1,7 +1,7 @@
-"""Fuzz harness generation (architecture §7).
+"""Fuzz harness generation.
 
 One harness per entry point (exported function, API route, CLI parser, file
-parser), LLM-assisted and informed by context-ingestion hints (§4). Scoped
+parser), LLM-assisted and informed by context-ingestion hints. Scoped
 **realistically**: reliable per-entry-point harness generation is OSS-Fuzz-scale
 work, so this is a bounded experiment with an expected high failure rate. The
 campaign ships gated behind whatever fraction of entry points actually produced
@@ -18,7 +18,7 @@ class EntryPoint:
     kind: str                      # function | route | cli | file_parser
     language: str                  # python | c | cpp | go | jvm
     location: str = ""             # file:line, for the report
-    priority: float = 0.0          # from §4 context prioritization
+    priority: float = 0.0 # from context prioritization
 
 
 @dataclass
@@ -64,7 +64,7 @@ def generate_harnesses(
     hints = hints or {}
     result = HarnessSet()
     # Prioritized entry points first — a bounded budget should spend on the
-    # files that context-ingestion (§4) flagged as interesting.
+    # files that context-ingestion flagged as interesting.
     ordered = sorted(entry_points, key=lambda e: e.priority, reverse=True)
     for ep in ordered:
         try:

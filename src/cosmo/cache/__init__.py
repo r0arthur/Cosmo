@@ -1,4 +1,4 @@
-"""Incremental scanning cache (architecture §15, build step 12).
+"""Incremental scanning cache (build step 12).
 
 Caches expensive stage results so only what changed since the last scan of a
 branch is re-run. Cache keys differ by stage: static/LLM key on the changed

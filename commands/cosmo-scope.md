@@ -1,5 +1,5 @@
 ---
-description: cosmo /scope — [program=… includes=a,b excludes=c rate=N] — declare an authorized target (§9)
+description: cosmo /scope — [program=… includes=a,b excludes=c rate=N] — declare an authorized target
 allowed-tools: Bash(cosmo:*), Bash(python -m cosmo:*)
 ---
 

@@ -1,9 +1,9 @@
-"""Git hook trigger adapter (architecture §2).
+"""Git hook trigger adapter.
 
 A thin caller of run_review over the STAGED diff — no scan logic lives here.
-Per §2 the git-hook trigger defaults to a `critical` threshold, short CLI
+Per the git-hook trigger defaults to a `critical` threshold, short CLI
 output, opt-in blocking, and static + LLM only (no sandbox/fuzzing — too slow
-for a commit hook). It leans on the incremental cache (§15, step 12) to stay
+for a commit hook). It leans on the incremental cache (step 12) to stay
 fast enough to run inline.
 """
 from __future__ import annotations
@@ -64,7 +64,7 @@ def render_hook_output(report: Report, exit_code: int) -> str:
 # --- hook installation ------------------------------------------------------
 
 _HOOK_TEMPLATE = """#!/usr/bin/env bash
-# Installed by cosmo (architecture §2). Runs a staged-diff security review.
+# Installed by cosmo. Runs a staged-diff security review.
 exec cosmo hook{blocking}
 """
 

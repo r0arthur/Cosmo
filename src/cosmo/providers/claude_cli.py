@@ -1,17 +1,17 @@
-"""Claude via the Claude Code CLI (architecture §8 + §17).
+"""Claude via the Claude Code CLI.
 
 An alternative to the API-key `ClaudeProvider`: instead of calling the Anthropic
 Messages API with an `ANTHROPIC_API_KEY`, this shells out to the installed
 `claude` binary (Claude Code) in headless/print mode (`claude -p`). That runs the
 review on the user's Claude Code **subscription** — no separate API key, no API
-billing — which is the §17 "reuse Claude Code's auth/session, don't fork it"
+billing — which is the "reuse Claude Code's auth/session, don't fork it"
 posture applied to the reviewer role itself.
 
-Data-governance note (§8): `exports_source = True`. Shelling to `claude` still
+Data-governance note: `exports_source = True`. Shelling to `claude` still
 sends the diff to Anthropic — it's the same vendor, just a different auth/billing
-path — so the §8 sensitivity gate treats it exactly like the hosted API provider.
+path — so the sensitivity gate treats it exactly like the hosted API provider.
 
-Egress note (§9a): calls go through the `claude` CLI, which does its own
+Egress note: calls go through the `claude` CLI, which does its own
 networking, so cosmo's PROVIDER-mode egress broker does **not** wrap them. This
 is inherent to reusing an external harness; the `broker` attribute is accepted
 for interface parity but is not a chokepoint for this backend.

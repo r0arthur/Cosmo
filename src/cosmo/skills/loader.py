@@ -1,11 +1,11 @@
-"""Skill loading (architecture §10).
+"""Skill loading.
 
 Skills are markdown files with frontmatter (`description`, `applies_to` glob) +
 instructions, same convention as Claude Code's SKILL.md. Two origins:
 
   * org-level  — a shared library the operator controls: TRUSTED guidance.
   * repo-level — `.cosmo/skills/*.md`, checked into the repo under scan, so it is
-                 UNTRUSTED input (same class as the README in §6). It is loaded,
+                 UNTRUSTED input (same class as the README). It is loaded,
                  but the injector (see inject.py) frames it as untrusted reference
                  that cannot override the reviewer's directives or suppress
                  findings — a repo cannot ship a skill that says "mark everything

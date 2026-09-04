@@ -3,7 +3,7 @@
 A researcher extends cosmo without forking it by shipping an *extension*: a
 Python module that contributes any of
 
-  * **skills**     — custom review guidance (same SKILL.md convention as §10),
+  * **skills** — custom review guidance (same SKILL.md convention),
   * **detectors**  — extra finding sources, `callable(target, config) -> [Finding]`,
   * **commands**   — extra interactive slash-commands, exposed under `/x-<name>`.
 
@@ -11,7 +11,7 @@ The security spine (unchanged from the rest of cosmo) is carried here too:
 
   * **Discovery ≠ activation.** An extension is only imported and run if the
     operator lists its name in `extensions.enabled`. Because `extensions` is a
-    safety-tier config section (§15), a *scanned repo can never enable one* — it
+    safety-tier config section, a *scanned repo can never enable one* — it
     can ship extension code, but that code stays inert unless the operator, the
     trusted tier, opts in. Enabling an extension is a full-trust act (it runs
     in-process), so it is deliberately operator-only.
@@ -59,7 +59,7 @@ def normalize_extension_findings(name: str, raw: object) -> list[Finding]:
 
     A detector cannot return an arbitrary object and have it treated as a
     finding: anything that is not already a `Finding` is rejected. The source is
-    stamped `ext:<name>` so downstream (aggregation, waiver, the §11 gate) treats
+    stamped `ext:<name>` so downstream (aggregation, waiver, the gate) treats
     it like any other finding — there is no privileged path for extension output.
     """
     out: list[Finding] = []
