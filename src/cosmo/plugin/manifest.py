@@ -40,6 +40,11 @@ _STANDALONE = {
     # before trusting a result, so it gets its own command rather than being
     # buried in the review flow.
     "tools",
+    # `/scan` was missing from this set entirely — it existed in `_COMMANDS`
+    # and worked from the CLI's interactive session, but had no Claude Code
+    # slash-command surface at all. `/findings` is its natural companion: read
+    # the result of a scan someone just ran.
+    "scan", "findings",
 }
 
 
@@ -104,8 +109,9 @@ def _delegating_body(name: str, desc: str) -> str:
         f"target and report the result.\n\n"
         f"Steps:\n"
         f"1. Open a session on the target (current working tree, or a PR the "
-        f"user named):\n"
-        f"   ```\n   cosmo interactive <target> --no-scan\n   ```\n"
+        f"user named) — opening one never scans on its own, `/scan` is a "
+        f"separate, explicit step:\n"
+        f"   ```\n   cosmo interactive <target>\n   ```\n"
         f"   then issue `/{name} <args>` — or run it non-interactively if the "
         f"user gave concrete arguments.\n"
         f"2. Report exactly what cosmo returns. Do not reinterpret a refusal: if "
