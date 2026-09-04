@@ -68,6 +68,7 @@ What the static stage can actually run here, and whether it is current.
 cosmo tools                    # offline: what is installed, and its version
 cosmo tools --check-updates    # also compare against the newest release
 cosmo tools --format json      # machine-readable
+cosmo tools --install          # fetch the scanners that have no pip package
 ```
 
 ```
@@ -86,8 +87,14 @@ cosmo tools --format json      # machine-readable
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--check-updates` | flag | `false` | Ask PyPI/GitHub for the newest published version. **The only part of this command that uses the network.** |
+| `--check-updates` | flag | `false` | Ask PyPI/GitHub for the newest published version |
 | `--format` | `cli` \| `json` | `cli` | Output renderer |
+| `--install [NAME ...]` | flag/list | — | Fetch `gitleaks`/`trivy`/`opengrep`/`trufflehog`/`find-sec-bugs` from their GitHub releases. No names = every one that's missing |
+| `--bindir DIR` | path | `$PREFIX/bin` or `~/.local/bin` | Where `--install` symlinks the fetched tools |
+| `--toolsdir DIR` | path | `$PREFIX/share/cosmo/tools` or `~/.local/share/cosmo/tools` | Where `--install` actually puts them, before symlinking |
+
+`--check-updates` and `--install` are the two things that touch the network —
+plain `cosmo tools` (and `cosmo review`) never does.
 
 **Exit code** is `1` if a scanner is missing or behind its latest release, `0`
 otherwise — so it works as a CI gate. A version cosmo *could not determine* is
@@ -112,8 +119,32 @@ exists to avoid.
 
 **It does not phone home.** `cosmo review` never checks for updates; nothing
 here runs unless you run it, and the network is touched only with
-`--check-updates`, only against release metadata (PyPI's JSON API and GitHub's
-releases API), and nothing about the repo under review is sent.
+`--check-updates` or `--install`, only against release metadata and release
+binaries (PyPI's JSON API, GitHub's releases API and release assets), and
+nothing about the repo under review is sent.
+
+**`--install` fetches, it does not bundle.** `semgrep`/`bandit` still come from
+`pip` (`scripts/install.sh` does that step; `--install` only knows about the
+five with no pip package). Each fetch is verified against the release's
+published checksum where one exists — `gitleaks`, `trivy`, `trufflehog` all
+publish one, and a mismatch refuses to install rather than warning and
+continuing. `opengrep` signs its releases with sigstore instead of a plain
+checksum, and `find-sec-bugs` publishes no checksum at all; both are downloaded
+over HTTPS only, and `--install` says so in its output rather than presenting
+that as equivalent to a verified install:
+
+```
+  fetching opengrep …
+  ✓ (unverified) opengrep → /home/you/.local/share/cosmo/tools/opengrep/opengrep
+    opengrep publishes sigstore signatures, not a plain checksum file — downloaded over HTTPS, not hash-verified
+```
+
+A tool with no release asset for this OS/architecture is skipped, not failed —
+`⊘ trufflehog: no trufflehog release asset matches this platform (Linux/riscv64)
+— install it manually`. `--install` only ever writes under `--bindir`/
+`--toolsdir`, and `--uninstall` on `scripts/install.sh` only ever removes a
+symlink that points back into those, so a copy you installed yourself,
+elsewhere on `PATH`, is never touched either way.
 
 `cosmo --version` prints cosmo's own version alone.
 
