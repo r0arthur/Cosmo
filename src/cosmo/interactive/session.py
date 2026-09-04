@@ -10,13 +10,16 @@ loosen a safety-tier setting.
 """
 from __future__ import annotations
 
+import inspect
 import threading
+import time
 from dataclasses import dataclass, field
 
 from ..config import Config
 from ..engine import run_review
 from ..findings import Finding, Report
 from ..providers.registry import resolve_primary
+from .scan_summary import Collector, ScanSummary
 
 
 @dataclass
@@ -116,11 +119,19 @@ class Session:
         return self.threshold_override or self.config.threshold
 
     scanned: bool = field(default=False, repr=False)
+    # The last completed /scan, kept so /report and /findings can answer from
+    # it without re-running the scanners. None until the first scan finishes.
+    last_scan: ScanSummary | None = field(default=None, repr=False)
 
     def scan(self, *, llm: bool = True) -> Report:
         """Run the same pipeline batch mode runs, honoring the session model +
         threshold. Provider resolution still applies the §8 data-governance gate;
-        a session `/model` cannot fan a sensitive repo's source off-box."""
+        a session `/model` cannot fan a sensitive repo's source off-box.
+
+        Builds a `ScanSummary` from the same event stream `run_review` already
+        emits — per-scanner success/failure/skip, severity counts, duration —
+        and keeps it on the session as `last_scan`.
+        """
         scanner = self.scanner or run_review
         cfg = self.config
         if self.threshold_override:
@@ -131,16 +142,35 @@ class Session:
         if llm:
             provider, warns = resolve_primary(cfg, session_model=self.session_model)
             self.notes.extend(warns)
-        try:
-            report = scanner(self.target, cfg, provider=provider,
-                             static_only=not llm)
-        except TypeError:
-            # An injected test scanner need not know about `static_only`.
-            report = scanner(self.target, cfg, provider=provider)
+
+        collector = Collector(self.emit)
+        # Only pass what the callable actually accepts. An injected test
+        # scanner is commonly a 3-arg stub; guessing via a caught TypeError
+        # (the previous approach) would just as happily swallow a genuine
+        # TypeError raised *inside* a correctly-called real scanner.
+        accepted = set(inspect.signature(scanner).parameters)
+        kwargs: dict = {"provider": provider}
+        if "static_only" in accepted:
+            kwargs["static_only"] = not llm
+        if "events" in accepted:
+            kwargs["events"] = collector
+
+        started = time.monotonic()
+        report = scanner(self.target, cfg, **kwargs)
+        finished = time.monotonic()
+        # Fills in what the live events could not have seen — most notably a
+        # cache hit, which replays the flat skip list but fires no per-tool
+        # event at all. See `Collector.reconcile`'s docstring for the one gap
+        # this still cannot close.
+        collector.reconcile(report, cfg)
+
         self.findings = report.findings
         self.cursor = 0
         self.scanned = True
         self.record_coverage(report)
+        self.last_scan = ScanSummary(target=self.target, llm=llm, started=started,
+                                     finished=finished, report=report,
+                                     scanners=list(collector.by_tool.values()))
         return report
 
     def record_coverage(self, report: Report) -> None:
