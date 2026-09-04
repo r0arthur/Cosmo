@@ -1,4 +1,4 @@
-"""Skills system — step 10 (architecture §10)."""
+"""Skills system — step 10."""
 import textwrap
 
 from cosmo.skills import (

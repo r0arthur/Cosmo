@@ -1,4 +1,4 @@
-"""Trend + findings store and compliance mapping — step 15 (architecture §14/§15)."""
+"""Trend + findings store and compliance mapping — step 15."""
 from cosmo.findings import ConfirmationStatus, Finding
 from cosmo.severity import Severity
 from cosmo.store import TrendStore, map_report, owasp_for, owasp_name
@@ -81,7 +81,7 @@ def test_noisiest_rules(tmp_path):
     assert abs(noisy[0][2] - 0.5) < 1e-9
 
 
-# --- disclosure queue (§13) -------------------------------------------------
+# --- disclosure queue -------------------------------------------------
 
 def test_disclosure_queue(tmp_path):
     store = _store(tmp_path)
@@ -92,7 +92,7 @@ def test_disclosure_queue(tmp_path):
     assert len(q) == 1 and q[0]["disclosure_status"] == "reported"
 
 
-# --- compliance mapping (§15) ----------------------------------------------
+# --- compliance mapping ----------------------------------------------
 
 def test_owasp_for_known_and_fallback():
     assert owasp_for("CWE-89") == "A03"               # injection

@@ -1,4 +1,4 @@
-"""Interactive command layer — step 17 (architecture §7).
+"""Interactive command layer — step 17.
 
 The through-line under test: the command layer cannot bypass the guardrails that
 batch mode enforces — fuzz duration cap, data-governance gate, public-comment
@@ -72,7 +72,7 @@ def test_duration_extend_still_capped(tmp_path):
     assert s.fuzz_duration == 3600            # 30m+40m clamped to the 1h cap
 
 
-# --- /model routes through the §8 data-governance gate ----------------------
+# --- /model routes through the data-governance gate ----------------------
 
 def test_model_switch_refused_for_sensitive_repo(tmp_path):
     # A sensitive repo with no accepted vendors must not fan source to deepseek.

@@ -1,8 +1,8 @@
-"""Skill matcher (architecture §10).
+"""Skill matcher.
 
 Selects only skills relevant to files actually in the diff before injecting them
 into the review prompt — so the model isn't handed rules for code that didn't
-change, and the prompt stays small (§15 cost control).
+change, and the prompt stays small (cost control).
 """
 from __future__ import annotations
 

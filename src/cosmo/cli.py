@@ -1,4 +1,4 @@
-"""CLI trigger adapter (architecture §2). A thin caller of run_review — no scan
+"""CLI trigger adapter. A thin caller of run_review — no scan
 logic lives here, only how a scan is invoked and how results are rendered.
 """
 from __future__ import annotations
@@ -246,7 +246,7 @@ def _main(argv: list[str] | None = None) -> int:
     if args.cmd == "agent":
         # Model-agnostic orchestration. The planner is resolved from config: a
         # live provider (Claude/Codex/DeepSeek/local Llama) when one is available
-        # and allowed by the §8 gate, otherwise the no-model rule-based planner —
+        # and allowed by the gate, otherwise the no-model rule-based planner —
         # so it runs out of the box either way.
         problem = _missing_target(args.target)
         if problem:
@@ -337,7 +337,7 @@ def _cmd_fuzz(args) -> int:
           f"target=sandbox-internal only.")
     print("harness generation + engine execution require the configured sandbox "
           "toolchain; run via cosmo.fuzz.run_campaign with a fuzz_runner wired to "
-          "the sandbox (§6). No external target is reachable from this command.")
+          "the sandbox. No external target is reachable from this command.")
     return 0
 
 
@@ -405,7 +405,7 @@ def _cmd_review(args) -> int:
         ui = LiveUI(color=False if args.no_color else None)
         ui.start()
 
-    # --model enters at the CLI tier of the §8 resolution order (outranks the
+    # --model enters at the CLI tier of the resolution order (outranks the
     # configured default, still gated by data sensitivity).
     try:
         report = run_review(args.target, config, model=args.model, audit=args.audit,

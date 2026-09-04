@@ -1,4 +1,4 @@
-"""Context ingestion — step 11 (architecture §4)."""
+"""Context ingestion — step 11."""
 from cosmo.config import Config
 from cosmo.context import (
     ContextItem,

@@ -1,4 +1,4 @@
-"""CLI adapter behavior (architecture §2) — thin, but a few guards matter."""
+"""CLI adapter behavior — thin, but a few guards matter."""
 import json
 
 from cosmo.cli import main

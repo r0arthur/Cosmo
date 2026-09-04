@@ -1,4 +1,4 @@
-"""Disclosure eligibility (architecture §13).
+"""Disclosure eligibility.
 
 Coordinated disclosure is only for **confirmed, high-severity, unpatched**
 findings — from any source (LLM review, dynamic confirmation, fuzzing, external-

@@ -1,4 +1,4 @@
-"""OpenAI-compatible providers (architecture §8).
+"""OpenAI-compatible providers.
 
 Codex (OpenAI), DeepSeek, and local Llama (Ollama/vLLM) all speak the
 OpenAI-style chat-completions API, so one implementation covers all three —
@@ -100,7 +100,7 @@ def _urllib_transport(url: str, headers: dict, json_body: dict) -> dict:  # prag
         return json.loads(r.read())
 
 
-# --- built-in alternate definitions (architecture §8, §16) ------------------
+# --- built-in alternate definitions ------------------
 
 def codex_provider(**kw) -> OpenAICompatProvider:
     return OpenAICompatProvider(
@@ -121,7 +121,7 @@ def deepseek_provider(**kw) -> OpenAICompatProvider:
 def llama_provider(endpoint: str = "http://localhost:11434/v1", **kw) -> OpenAICompatProvider:
     # Local (Ollama/vLLM). Never leaves the box → eligible even for sensitive repos.
     # Declares only cross_check by default: a smaller local model isn't assumed
-    # interchangeable as the primary reviewer (§8).
+    # interchangeable as the primary reviewer.
     return OpenAICompatProvider(
         "llama", "local", endpoint, "llama3.1",
         key_env=None, exports_source=False, roles={CROSS_CHECK}, **kw,

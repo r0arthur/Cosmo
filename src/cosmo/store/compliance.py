@@ -1,4 +1,4 @@
-"""Compliance mapping (architecture §15).
+"""Compliance mapping.
 
 Maps a finding's CWE (its `category`, when it carries one) to the OWASP Top 10
 2021 category, so the trend store can report coverage against a recognised

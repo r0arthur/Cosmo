@@ -1,4 +1,4 @@
-"""SECURITY.md contact extraction (architecture §13).
+"""SECURITY.md contact extraction.
 
 The maintainer disclosure contact is read from the repo's SECURITY.md. That file
 lives in the *scanned repo*, so it is **untrusted input** (RISK-03): whatever it

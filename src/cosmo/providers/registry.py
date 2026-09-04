@@ -1,16 +1,16 @@
-"""Provider resolution + the data-governance gate (architecture §8).
+"""Provider resolution + the data-governance gate.
 
 Resolution order (provider selection): session `/model` → `--model` flag → repo
 `cosmo.yaml` → org config → built-in Claude default.
 
 Data-governance gate: enabling a hosted provider exports the target's source to
 that vendor. At `data_sensitivity: sensitive` (a safety-tier setting a repo can
-only tighten, never loosen — §15), only local providers and vendors the operator
+only tighten, never loosen), only local providers and vendors the operator
 has explicitly accepted (`sensitive_allowed_vendors`) are eligible. Everything
 else falls through to the local Llama path or the Claude default per policy.
 
 On a configured non-default provider being unavailable: fall back to Claude with
-a warning, or hard-fail — never silently skip review (§8).
+a warning, or hard-fail — never silently skip review.
 """
 from __future__ import annotations
 
@@ -144,5 +144,5 @@ def resolve_primary(
             continue
         return provider, warnings
 
-    # Built-in Claude default (§8).
+    # Built-in Claude default.
     return ClaudeProvider(), warnings

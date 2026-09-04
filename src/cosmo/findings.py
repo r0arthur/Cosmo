@@ -1,4 +1,4 @@
-"""Normalized finding schema and Report (architecture §11).
+"""Normalized finding schema and Report.
 
 Every source normalizes to this one shape regardless of origin, so there is no
 N×M adapter problem between sources and output renderers.
@@ -38,14 +38,14 @@ def normalize_category(value: Optional[str]) -> Optional[str]:
 
 
 class ConfirmationStatus(str, Enum):
-    CONFIRMED = "confirmed"          # reproduced with evidence (needs the sandbox, §6 — v2)
+    CONFIRMED = "confirmed" # reproduced with evidence (needs the sandbox — v2)
     UNCONFIRMED = "unconfirmed"      # couldn't safely test (the only status the MVP emits)
-    NOT_REPRODUCIBLE = "not_reproducible"  # probe ran, didn't match (§6/§11 — v2)
+    NOT_REPRODUCIBLE = "not_reproducible" # probe ran, didn't match (v2)
 
 
 @dataclass
 class Finding:
-    """One normalized finding. Field order mirrors the §11 schema."""
+    """One normalized finding. Field order mirrors the schema."""
 
     id: str
     title: str
@@ -61,10 +61,10 @@ class Finding:
     exploit_scenario: str = ""        # plain language
     remediation: str = ""             # suggested patch or steps
 
-    # Drives the public-comment gate (§12). None = UNKNOWN → gate fails closed (RISK-05).
+    # Drives the public-comment gate. None = UNKNOWN → gate fails closed (RISK-05).
     security_sensitive: Optional[bool] = None
 
-    fingerprint: Optional[str] = None   # content/AST-based, set by the waiver stage (§11, RISK-07)
+    fingerprint: Optional[str] = None # content/AST-based, set by the waiver stage (RISK-07)
     waived: bool = False
     waived_reason: str = ""
 

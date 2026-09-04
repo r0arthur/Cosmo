@@ -1,4 +1,4 @@
-# Example GitHub Actions workflow: run cosmo on every pull request (architecture §2).
+# Example GitHub Actions workflow: run cosmo on every pull request.
 # Copy to .github/workflows/ in the repo you want reviewed.
 name: cosmo security review
 

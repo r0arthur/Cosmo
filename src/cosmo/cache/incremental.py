@@ -1,4 +1,4 @@
-"""Incremental-scan helpers (architecture §15).
+"""Incremental-scan helpers.
 
 Serialize/deserialize findings for the cache, derive the per-file content map
 from a diff, and cache-or-run a stage so an expensive stage only re-runs when its
@@ -44,7 +44,7 @@ def diff_file_contents(diff) -> dict[str, str]:
     """Per-file content proxy from a diff: the joined added-line text per file.
 
     Enough to detect 'this file's changed lines are identical to last scan' —
-    the granularity static/LLM caching keys on (§15)."""
+    the granularity static/LLM caching keys on."""
     out: dict[str, str] = {}
     for f in diff.files:
         out[f.path] = "\n".join(t for h in f.hunks for _, t in h.added)
@@ -67,5 +67,5 @@ def cache_or_run(
 
 def dynamic_still_valid(cache: Cache, key: str) -> bool:
     """A dynamic (sandbox) result is only reusable if its exact composite key is
-    present — a moved lockfile/toolchain/file-set produces a different key (§15)."""
+    present — a moved lockfile/toolchain/file-set produces a different key."""
     return cache.get(key) is not None

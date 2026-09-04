@@ -1,11 +1,11 @@
-"""Core engine (architecture §1, build step 1).
+"""Core engine (build step 1).
 
     run_review(target, config) -> Report
 
 The single entry point every trigger adapter calls. Pipeline order follows the
-architecture: static pre-filter first (§5), its output handed to the LLM as
+architecture: static pre-filter first, its output handed to the LLM as
 context so the model doesn't re-derive it, then dedupe, then waiver suppression
-(§11), then the severity floor.
+, then the severity floor.
 """
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ def run_review(
     else:
         ev.stage_skipped("cache", "incremental cache disabled (--no-cache)")
 
-    # Step 6 — static pre-filter (before the LLM stage, §5), cached per changed-file content.
+    # Step 6 — static pre-filter (before the LLM stage), cached per changed-file content.
     ev.stage_started("static")
     # The active tool set is part of the key: enabling a scanner and re-running
     # must not replay the cached findings of the narrower set against unchanged
@@ -91,18 +91,18 @@ def run_review(
     ev.stage_completed("static", f"{len(static_findings)} finding(s)",
                        findings=len(static_findings))
 
-    # Step 1 — LLM review. Provider resolved through the layer (§8): resolution
+    # Step 1 — LLM review. Provider resolved through the layer: resolution
     # order + data-governance gate + fallback to the Claude default.
     ev.stage_started("provider")
     if provider is None and not static_only:
-        # `model` (the --model flag) enters at the CLI tier of the §8 resolution
+        # `model` (the --model flag) enters at the CLI tier of the resolution
         # order, so it outranks the configured default but still passes the
         # data-governance gate.
         provider, resolve_warnings = resolve_primary(config, cli_model=model)
         notes += resolve_warnings
         for w in resolve_warnings:
             ev.warning(w, stage="provider")
-    # Route this provider's model-API egress through the broker (§8 + §9a): one
+    # Route this provider's model-API egress through the broker: one
     # audit log, one forbidden-address block. Honors the operator allow-list.
     if not static_only and getattr(provider, "broker", None) is None:
         from .providers.egress import provider_broker_from_config
@@ -135,8 +135,8 @@ def run_review(
 
         ev.stage_started("llm")
         if audit:
-            # Whole-project audit: review file-by-file under a hard call budget
-            # (§ cost guard). Not cached — each file is a distinct model call.
+            # Whole-project audit: review file-by-file under a hard call budget.
+            # Not cached — each file is a distinct model call.
             from .audit import run_llm_audit
             before = len(findings)
             findings += run_llm_audit(
@@ -169,7 +169,7 @@ def run_review(
                     ev.operation(f"reused cached model:{provider.name} results", stage="llm")
                 ev.stage_completed("llm", f"{len(model_findings)} finding(s)",
                                    findings=len(model_findings))
-            except Exception as exc:  # never silently skip review (§8) — record it
+            except Exception as exc: # never silently skip review — record it
                 skipped.append(f"model:{provider.name} (error: {exc})")
                 ev.error(f"model:{provider.name} failed: {exc}", stage="llm")
                 ev.stage_skipped("llm", f"model:{provider.name} (error: {exc})")
@@ -191,7 +191,7 @@ def run_review(
 
     # Custom extension detectors (operator-gated). Their output is normalized into
     # the shared Finding shape and joins the same downstream path — dedupe, waiver,
-    # and the §11 public-comment gate — with no privileged shortcut.
+    # and the public-comment gate — with no privileged shortcut.
     ev.stage_started("extensions")
     ext = _run_extension_detectors(diff.target, config, skipped, notes)
     findings += ext
@@ -267,7 +267,7 @@ def _single_prompt_size(diff, context: str) -> int:
 
 
 def _watch_egress(provider, ev: Emitter) -> None:
-    """Mirror the broker's egress decisions into the event stream (§9a).
+    """Mirror the broker's egress decisions into the event stream.
 
     Reads the same record the broker already writes — the UI observes the audit
     log, it never becomes a second, divergent one.
@@ -335,8 +335,8 @@ def _static_context(static_findings: list[Finding]) -> str:
 
 def _review_context(diff, static_findings: list[Finding], config: Config,
                     notes: list[str], ev: Emitter | None = None) -> str:
-    """Compose the LLM review context: static pre-filter output (§5) + matched
-    skills (§10), with org skills trusted and repo skills framed as untrusted."""
+    """Compose the LLM review context: static pre-filter output + matched
+    skills, with org skills trusted and repo skills framed as untrusted."""
     ev = ev or Emitter(None)
     parts: list[str] = []
     sc = _static_context(static_findings)
@@ -347,7 +347,7 @@ def _review_context(diff, static_findings: list[Finding], config: Config,
 
     skills = load_skills(diff.target, org_dir=config.get("skills.org_dir"))
     # Custom skills contributed by operator-enabled extensions (trust follows
-    # activation; reference_only extensions load as untrusted — see extensions §).
+    # activation; reference_only extensions load as untrusted — see extensions.py).
     from .extensions import load_enabled
     skills += load_enabled(config).skills()
     matched = match_skills(skills, [f.path for f in diff.files])
@@ -368,7 +368,7 @@ def _apply_context(target, diff, findings, config, context_items, notes, skipped
 
     Only runs for GitHub targets when enabled; degrades gracefully otherwise.
     Prioritization raises attention on referenced files — it never creates or
-    suppresses a finding (§4)."""
+    suppresses a finding."""
     ev = ev or Emitter(None)
     if not config.get("context_ingestion", {}).get("issues", True):
         ev.stage_skipped("priority", "issue ingestion disabled in config")
@@ -435,7 +435,7 @@ def _stamp_corroboration(kept: Finding, sources: list[str]) -> Finding:
 
 
 def _dedupe(findings: list[Finding]) -> list[Finding]:
-    """Coarse dedupe by (file, line, category); the real aggregator (§11) is richer.
+    """Coarse dedupe by (file, line, category); the real aggregator is richer.
 
     With several scanners running, most duplicates are the *same* vulnerability
     seen by different tools, so the survivor carries their agreement forward

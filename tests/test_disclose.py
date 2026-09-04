@@ -1,4 +1,4 @@
-"""Coordinated disclosure workflow — step 18 (architecture §13)."""
+"""Coordinated disclosure workflow — step 18."""
 import pytest
 
 from cosmo.broker import EgressBroker, EgressDenied, Mode

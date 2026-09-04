@@ -1,8 +1,8 @@
-"""Claude — the built-in default provider (architecture §8).
+"""Claude — the built-in default provider.
 
 Hardcoded default and fallback. If the `anthropic` SDK isn't installed or no API
 key is set, `available()` is False and the engine records a skipped stage rather
-than silently dropping the LLM review (§8: never silently skip review).
+than silently dropping the LLM review (: never silently skip review).
 """
 from __future__ import annotations
 

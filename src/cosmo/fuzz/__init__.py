@@ -1,4 +1,4 @@
-"""Zero-day fuzzing campaign (architecture §7, build step 16).
+"""Zero-day fuzzing campaign (build step 16).
 
 A separate, heavier, **manual-only** capability (`cosmo fuzz`) for surfacing
 genuinely unknown vulnerabilities against cosmo's *own sandboxed build*. Never
@@ -6,7 +6,7 @@ on any default path; no scheduler, no daemon; a hard duration cap; always tears
 down. Load-bearing constraints carried from the design review:
 
 - **Hard scope constraint** — no code path accepts an external URL as a target;
-  only the sandbox's internal instance, all egress through the broker (§9a) in
+  only the sandbox's internal instance, all egress through the broker in
   SANDBOX mode.
 - **Novelty is never asserted** — a crash the check can't match a known CVE/issue
   is *unverified-novel*, not "novel"; matches only flag likely duplicates.

@@ -1,4 +1,4 @@
-"""Trigger adapters (architecture §2) — thin callers of run_review.
+"""Trigger adapters — thin callers of run_review.
 
 Build step 13: the git-hook adapter (pre-commit over the staged diff).
 Build step 14: the GitHub Action adapter (PR diff → SARIF + gated PR comment).

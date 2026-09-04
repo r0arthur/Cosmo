@@ -1,8 +1,8 @@
-"""Dynamic analysis sandbox orchestrator (architecture §6, build step 8).
+"""Dynamic analysis sandbox orchestrator (build step 8).
 
 Only ever targets a build cosmo itself provisioned — never a live external
-target (that is §9, gated separately). All egress is mediated by the egress
-broker (§9a) in SANDBOX mode, so this stage is structurally incapable of
+target (that is, gated separately). All egress is mediated by the egress
+broker in SANDBOX mode, so this stage is structurally incapable of
 reaching an arbitrary external host.
 
 Stages: provision → health check → targeted confirmation → (exploratory: v2) →
@@ -91,7 +91,7 @@ def confirm_findings(
             if outcome.feeds_waiver and f.fingerprint:
                 result.waiver_signals.append(f.fingerprint)
 
-    except Exception as exc:  # degrade, don't crash the whole review (§6)
+    except Exception as exc: # degrade, don't crash the whole review
         result.skipped.append(f"sandbox (error: {exc}; findings left unconfirmed)")
     finally:
         if handle is not None:

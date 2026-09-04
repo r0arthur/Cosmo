@@ -1,4 +1,4 @@
-"""Public-comment gate (architecture §12, RISK-05).
+"""Public-comment gate (RISK-05).
 
 Hard constraint on any PUBLIC output (PR/issue comment, Check annotation),
 driven automatically by severity + confirmation_status + security_sensitive —
@@ -23,12 +23,13 @@ from ..severity import Severity
 class PublicDecision(str, Enum):
     POST_FULL = "post_full"        # safe to post with full technical detail
     ACKNOWLEDGE_ONLY = "acknowledge_only"  # generic ack, no detail/PoC/severity
-    WITHHOLD = "withhold"          # nothing public; route to coordinated disclosure (§13)
+    WITHHOLD = "withhold" # nothing public; route to coordinated disclosure
 
 
 def public_gate(f: Finding) -> PublicDecision:
-    # Confirmed, exploitable, unpatched → never public (routed to §13). In the MVP
-    # nothing reaches CONFIRMED (no sandbox), but the rule is enforced now.
+    # Confirmed, exploitable, unpatched → never public; routed to disclosure
+    # instead. In the MVP nothing reaches CONFIRMED (no sandbox), but the
+    # rule is enforced now.
     if f.confirmation_status is ConfirmationStatus.CONFIRMED and f.severity >= Severity.HIGH:
         return PublicDecision.WITHHOLD
 
