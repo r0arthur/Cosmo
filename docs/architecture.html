@@ -195,7 +195,7 @@
 
       <rect x="270" y="74" width="180" height="44" rx="8" class="node"/>
       <text x="360" y="94" text-anchor="middle" font-size="12.5">LLM review</text>
-      <text x="360" y="109" text-anchor="middle" font-size="11" class="t-sm">provider layer §8</text>
+      <text x="360" y="109" text-anchor="middle" font-size="11" class="t-sm">provider layer</text>
 
       <rect x="500" y="74" width="180" height="44" rx="8" class="node"/>
       <text x="590" y="94" text-anchor="middle" font-size="12.5">ext. detectors</text>
@@ -247,7 +247,7 @@
       <text x="360" y="504" text-anchor="middle" font-size="12">SARIF</text>
       <rect x="528" y="482" width="124" height="34" rx="7" class="node-g"/>
       <text x="590" y="500" text-anchor="middle" font-size="12">PR comment</text>
-      <text x="590" y="512" text-anchor="middle" font-size="9.5" class="g-fill">§11 gate</text>
+      <text x="590" y="512" text-anchor="middle" font-size="9.5" class="g-fill">disclosure gate</text>
 
       <!-- cache bracket -->
       <path d="M700,76 q10,0 10,10 v20 q0,10 -10,10" class="edge-a" fill="none"/>
@@ -298,7 +298,7 @@
 
         <rect x="14" y="246" width="152" height="38" rx="8" class="node-a"/>
         <text x="90" y="263" text-anchor="middle" font-size="11.5">model provider API</text>
-        <text x="90" y="277" text-anchor="middle" font-size="9.5" class="a-fill">mode = PROVIDER · §8</text>
+        <text x="90" y="277" text-anchor="middle" font-size="9.5" class="a-fill">mode = PROVIDER</text>
       </g>
       <path d="M166,43 C210,43 200,150 244,150" class="edge" marker-end="url(#br-ar)"/>
       <path d="M166,117 C205,117 205,150 244,150" class="edge" marker-end="url(#br-ar)"/>
@@ -307,7 +307,7 @@
 
       <!-- broker box -->
       <rect x="246" y="38" width="330" height="224" rx="12" class="node-g"/>
-      <text x="411" y="60" text-anchor="middle" font-size="12.5" class="g-fill" font-weight="600">EGRESS BROKER · §9a</text>
+      <text x="411" y="60" text-anchor="middle" font-size="12.5" class="g-fill" font-weight="600">EGRESS BROKER</text>
 
       <!-- checks -->
       <g>
@@ -382,7 +382,7 @@
 
       <!-- merge -->
       <rect x="286" y="86" width="150" height="88" rx="10" class="node"/>
-      <text x="361" y="112" text-anchor="middle" font-size="12.5" font-weight="600">merge (§15)</text>
+      <text x="361" y="112" text-anchor="middle" font-size="12.5" font-weight="600">merge</text>
       <text x="361" y="134" text-anchor="middle" font-size="10.5" class="t-sm">preference: override</text>
       <text x="361" y="150" text-anchor="middle" font-size="10.5" class="t-sm">safety: tighten-only</text>
 
@@ -452,7 +452,7 @@
     <div class="card">
       <div class="ph">Network &amp; dynamic</div><div class="steps">steps 7–9</div>
       <h3>Broker, sandbox, providers</h3>
-      <p>The single egress broker, the dynamic-analysis sandbox that depends on it, and the multi-model provider layer with the §8 data-governance gate.</p>
+      <p>The single egress broker, the dynamic-analysis sandbox that depends on it, and the multi-model provider layer with the data-governance gate.</p>
       <div class="mods"><span class="chip">broker/</span><span class="chip">sandbox/</span><span class="chip">providers/</span><span class="chip tests">39 tests</span></div>
     </div>
     <div class="card">
@@ -561,7 +561,7 @@
     <figcaption><b>Discovery ≠ activation.</b> Enabling an extension runs third-party code
     in-process, so it is deliberately an operator-only act. Custom commands are namespaced to
     <code>/x-*</code> (they can't shadow <code>/report</code> or <code>/scope</code>), custom
-    findings still pass through the §11 gate, and custom-skill trust follows the operator's
+    findings still pass through the disclosure gate, and custom-skill trust follows the operator's
     activation.</figcaption>
   </figure>
 </section>
@@ -577,7 +577,7 @@
   ensemble) and the harness that <b>drives</b> the loop.</p>
   <ul class="clean">
     <li><b>Your review model is your choice.</b> The plugin is just a host surface; the model that finds bugs is set in <code>providers:</code> and is never forced to Claude — only the data-sensitivity gate can veto an off-box vendor.</li>
-    <li><b>Orchestration is model-agnostic too.</b> §17 option 2 ships as <code>cosmo agent</code>: cosmo's own agent loop, where any planner — a local Llama, DeepSeek, or no model at all — proposes commands and the driver executes only through the guarded <code>dispatch</code>. The orchestrating model is contained to the exact surface a human at the REPL has.</li>
+    <li><b>Orchestration is model-agnostic too.</b> Option 2 ships as <code>cosmo agent</code>: cosmo's own agent loop, where any planner — a local Llama, DeepSeek, or no model at all — proposes commands and the driver executes only through the guarded <code>dispatch</code>. The orchestrating model is contained to the exact surface a human at the REPL has.</li>
     <li><b>One binary, many triggers.</b> The plugin's <code>/cosmo-*</code> commands and the git hook both call <code>run_review</code>; there is no second, less-guarded path.</li>
     <li><b>The plugin surface is generated, not hand-kept.</b> <code>cosmo plugin sync</code> derives the commands from the guarded registry; <code>cosmo plugin check</code> fails CI on drift, so the plugin can never expose more than the enforced layer.</li>
     <li><b>Graceful degradation.</b> Importing cosmo never requires Claude Code or an API key — without them, the LLM stage is reported as <code>skipped:</code>, not silently passed.</li>
