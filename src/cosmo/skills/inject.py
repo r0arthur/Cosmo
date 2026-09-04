@@ -1,11 +1,11 @@
-"""Skill injection into the review prompt (architecture §10).
+"""Skill injection into the review prompt.
 
 The security-relevant part: org skills are TRUSTED guidance; repo skills are
 UNTRUSTED (they ship in the scanned repo). They go into separately-labeled
 sections, and the repo section carries an explicit directive that its content is
 reference data only — it cannot relax the reviewer's job, suppress findings, or
 override the system prompt. This is the same untrusted-input discipline applied
-to the README in §6 (RISK-03), carried to skills.
+to the README in (RISK-03), carried to skills.
 """
 from __future__ import annotations
 

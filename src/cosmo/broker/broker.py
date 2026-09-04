@@ -1,10 +1,10 @@
-"""Egress broker — the single guarded network chokepoint (architecture §9a).
+"""Egress broker — the single guarded network chokepoint.
 
 Every mode that touches the network goes through here. There is structurally one
 path out, and it is guarded, so "no code path to an arbitrary external target"
 becomes a property that can be tested rather than a claim in prose.
 
-Per outbound request, in order (§9a):
+Per outbound request, in order:
   1. Mode gate            — the caller's mode bounds what it can reach at all.
   2. Scope resolution     — include/exclude on the RESOLVED host, so a redirect
                             or newly-discovered host outside scope is refused.
@@ -12,11 +12,11 @@ Per outbound request, in order (§9a):
   4. Logging              — emitted here so no tool can sidestep it.
 
 The broker governs sandbox provisioning, external-target recon, disclosure
-delivery, and — via PROVIDER mode — model-provider API egress (§8). Provider
+delivery, and — via PROVIDER mode — model-provider API egress. Provider
 calls are operator-credentialed rather than untrusted, but routing them here too
 means every network touch has exactly one audit log and one forbidden-address
 (SSRF/metadata) block, so a provider endpoint a repo pointed at an internal
-address is refused like anything else. GitHub reads (§3) remain plain trusted
+address is refused like anything else. GitHub reads remain plain trusted
 egress outside the broker.
 """
 from __future__ import annotations
@@ -53,13 +53,13 @@ class EgressBroker:
         self._bucket: TokenBucket | None = None
 
     def allow_provider(self, *hosts: str) -> None:
-        """Add allow-listed model-provider hosts for PROVIDER-mode egress (§8)."""
+        """Add allow-listed model-provider hosts for PROVIDER-mode egress."""
         self.provider_policy.allow(*hosts)
 
     # --- policy declaration -------------------------------------------------
 
     def declare_scope(self, scope: Scope, clock=None) -> None:
-        """Activate an authorized external target (§9). Builds the one global bucket."""
+        """Activate an authorized external target. Builds the one global bucket."""
         self.active_scope = scope
         kw = {"clock": clock} if clock else {}
         self._bucket = TokenBucket(scope.rate_limit_per_sec, **kw)

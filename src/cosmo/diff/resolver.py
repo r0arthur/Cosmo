@@ -1,4 +1,4 @@
-"""Diff resolver (architecture §3, build step 3).
+"""Diff resolver (build step 3).
 
 Normalizes local `git diff` and GitHub PR diffs into one internal shape
 (file, hunk, added lines + line numbers, surrounding context) before anything
@@ -87,9 +87,9 @@ def _run(cmd: list[str], cwd: str | None = None) -> str:
 
 
 def _resolve_github(repo: str, number: str) -> Diff:
-    """Read a PR diff via the `gh` CLI (§3; same access pattern as code-review plugin).
+    """Read a PR diff via the `gh` CLI (same access pattern as code-review plugin).
 
-    Reading is unrestricted; posting is gated separately (§12 / output.gate).
+    Reading is unrestricted; posting is gated separately (output.gate).
     """
     if not shutil.which("gh"):
         raise RuntimeError("GitHub target requested but `gh` CLI is not installed")
@@ -145,7 +145,7 @@ def _whole_tree_as_added(path: Path) -> Diff:
 
 
 def _resolve_staged(path: Path) -> Diff:
-    """Staged diff (`git diff --cached`) — the git-hook trigger's target (§2)."""
+    """Staged diff (`git diff --cached`) — the git-hook trigger's target."""
     raw = _run(["git", "-C", str(path), "diff", "--cached"])
     return Diff(source="local", target=str(path), files=parse_unified_diff(raw), raw=raw)
 

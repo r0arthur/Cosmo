@@ -1,4 +1,4 @@
-"""GitHub Action trigger adapter — step 14 (architecture §2)."""
+"""GitHub Action trigger adapter — step 14."""
 import json
 
 import pytest
@@ -48,7 +48,7 @@ def test_writes_sarif_and_blocks_by_default(tmp_path, monkeypatch):
                                   category="CWE-89", security_sensitive=False)])
     sarif = tmp_path / "out.sarif"
     report, code = run_github_action(Config(data={}), _repo(tmp_path), sarif_path=str(sarif))
-    assert code == 1                                  # ci blocks by default (§16)
+    assert code == 1 # ci blocks by default
     doc = json.loads(sarif.read_text())
     assert doc["version"] == "2.1.0"
     assert doc["runs"][0]["results"][0]["ruleId"] == "CWE-89"

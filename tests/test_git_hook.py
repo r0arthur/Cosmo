@@ -1,4 +1,4 @@
-"""Git hook trigger adapter — step 13 (architecture §2)."""
+"""Git hook trigger adapter — step 13."""
 import os
 import subprocess
 

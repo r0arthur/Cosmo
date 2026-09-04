@@ -1,8 +1,8 @@
-"""Dynamic analysis sandbox (architecture §6, build step 8).
+"""Dynamic analysis sandbox (build step 8).
 
 Runs a build cosmo itself provisioned, in a hardened rootless container, to
 confirm suspected findings with evidence. All egress goes through the egress
-broker (§9a, step 7) in SANDBOX mode. Not on the MVP default path — invoked
+broker (step 7) in SANDBOX mode. Not on the MVP default path — invoked
 explicitly via `confirm_findings`.
 """
 from .probes import ConfirmationOutcome, Probe, default_probe_for, evaluate

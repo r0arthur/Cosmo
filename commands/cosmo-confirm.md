@@ -1,5 +1,5 @@
 ---
-description: cosmo /confirm — <finding-id> — trigger sandbox confirmation for one finding (§6)
+description: cosmo /confirm — <finding-id> — trigger sandbox confirmation for one finding
 allowed-tools: Bash(cosmo:*), Bash(python -m cosmo:*)
 ---
 

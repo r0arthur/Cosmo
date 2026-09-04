@@ -1,4 +1,4 @@
-"""Global rate-limit budget (architecture §9a).
+"""Global rate-limit budget.
 
 One token bucket sits in front of ALL external-target tools. Because httpx /
 nuclei / naabu / ffuf each carry independent concurrency, per-tool configuration

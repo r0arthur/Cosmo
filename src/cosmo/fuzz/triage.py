@@ -1,4 +1,4 @@
-"""Crash triage + dedup (architecture §7).
+"""Crash triage + dedup.
 
 Stack-hash deduplication, input minimization to the smallest reproducer, and
 severity classification from sanitizer / exception output. This is where a raw

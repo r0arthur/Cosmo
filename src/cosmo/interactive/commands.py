@@ -1,4 +1,4 @@
-"""Interactive command dispatch (architecture §7).
+"""Interactive command dispatch.
 
 Slash-commands over a live `Session`. The whole point of this module is that it
 is a *thin* layer: each command delegates to the same guarded code batch mode
@@ -6,10 +6,10 @@ uses, so the guardrails hold identically. In particular:
 
 - `/duration` is capped by `fuzzing.max_duration`; raising the ceiling requires
   editing config, never a chat command.
-- `/model` resolves through the §8 data-governance gate — a sensitive repo's
+- `/model` resolves through the data-governance gate — a sensitive repo's
   source is never fanned to a disallowed vendor from a session command.
 - `/report pr` (and any issue/PR surface) renders through the fail-closed
-  public-comment gate (§11/RISK-05), exactly as the GitHub Action does.
+  public-comment gate (RISK-05), exactly as the GitHub Action does.
 - `/threshold` only moves the session's severity floor; it cannot touch a
   safety-tier setting.
 """
@@ -62,7 +62,7 @@ def _cmd_threshold(session: Session, args) -> str:
 
 
 def _cmd_model(session: Session, args) -> str:
-    """[provider] — switch model for the session (§8 resolution + data-governance)"""
+    """[provider] — switch model for the session (resolution + data-governance)"""
     from ..providers.registry import resolve_primary
     if not args:
         provider, _ = resolve_primary(session.config, session_model=session.session_model)
@@ -117,7 +117,7 @@ def _cmd_skills(session: Session, args) -> str:
 
 
 def _cmd_confirm(session: Session, args) -> str:
-    """<finding-id> — trigger sandbox confirmation for one finding (§6)"""
+    """<finding-id> — trigger sandbox confirmation for one finding"""
     if not args:
         return "usage: /confirm <finding-id>"
     f = session.find(args[0])
@@ -227,7 +227,7 @@ def _status_model(session: Session) -> str:
 
 
 def _cmd_scope(session: Session, args) -> str:
-    """[program=… includes=a,b excludes=c rate=N] — declare an authorized target (§9)"""
+    """[program=… includes=a,b excludes=c rate=N] — declare an authorized target"""
     from ..external import ScopeError
     ext = session.external_mode()
     if not args:
@@ -258,7 +258,7 @@ def _cmd_scope(session: Session, args) -> str:
 
 
 def _cmd_disclose(session: Session, args) -> str:
-    """<finding-id> — draft + queue a coordinated disclosure (§13); sends nothing"""
+    """<finding-id> — draft + queue a coordinated disclosure; sends nothing"""
     from ..disclose import NotEligible, find_contact, queue_disclosure
     from ..disclose.security_md import DisclosureContact
     from ..store import TrendStore
@@ -301,7 +301,7 @@ def _cmd_audit(session: Session, args) -> str:
         from ..providers import describe_unavailable
         return (f"cannot audit: {describe_unavailable(provider)} "
                 f"Switch in this session with `/model <name>`.")
-    # Same broker wiring as the engine (§8 + §9a); a provider that doesn't take
+    # Same broker wiring as the engine; a provider that doesn't take
     # one (e.g. the CLI provider) is left as-is.
     if getattr(provider, "broker", None) is None:
         from ..providers.egress import provider_broker_from_config
@@ -495,7 +495,7 @@ def _cmd_tools(session: Session, args) -> str:
     return "\n".join(lines)
 
 
-# Order defines /help output. /disclose (§13) landed in step 18 and /scope (§9)
+# Order defines /help output. /disclose landed in step 18 and /scope
 # in step 19 — the full session command set from the architecture.
 _COMMANDS = {
     "help": _cmd_help,

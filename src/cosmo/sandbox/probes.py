@@ -1,7 +1,7 @@
-"""Targeted confirmation probes and confirmation-status logic (architecture §6, RISK-04).
+"""Targeted confirmation probes and confirmation-status logic (RISK-04).
 
 Probes are **non-destructive** (read/observe only — no write/delete/exfiltrate,
-§6.3). That is a guarantee, not a guideline: a probe declared destructive is
+). That is a guarantee, not a guideline: a probe declared destructive is
 rejected at construction.
 
 Because a read-only probe *structurally cannot* exercise write-path,
@@ -9,7 +9,7 @@ state-corruption, or destructive-action classes, "didn't reproduce" is the
 expected result for those classes — not evidence of a false positive. So each
 probe records which classes it is *capable* of triggering, and only a
 non-reproduction from a probe that could have triggered the finding's class
-feeds the waiver system (§11). Everything else stays UNCONFIRMED at reduced
+feeds the waiver system. Everything else stays UNCONFIRMED at reduced
 confidence, never waived (RISK-04).
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ class Probe:
 
     def __post_init__(self) -> None:
         if self.destructive:
-            raise ValueError("sandbox probes must be non-destructive (§6.3): read/observe only")
+            raise ValueError("sandbox probes must be non-destructive: read/observe only")
 
 
 @dataclass
@@ -69,7 +69,7 @@ def evaluate(finding: Finding, probe: Probe, reproduced: bool | None, evidence: 
 
 def default_probe_for(finding: Finding) -> Probe:
     """A minimal read-only probe scoped to the finding's own class. Real per-class
-    probe construction (§6.3) is a v2 spike; this keeps the confirmation contract."""
+    probe construction is a v2 spike; this keeps the confirmation contract."""
     classes = {finding.category} if finding.category else set()
     return Probe(
         finding_id=finding.id,

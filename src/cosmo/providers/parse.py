@@ -1,4 +1,4 @@
-"""Shared parsing of a model's JSON finding array into Finding objects (§8).
+"""Shared parsing of a model's JSON finding array into Finding objects.
 
 Every provider returns the same JSON contract, so the parse lives once here
 rather than in each provider.

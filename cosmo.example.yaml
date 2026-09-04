@@ -1,6 +1,6 @@
 # cosmo.yaml — checked into the repo being scanned.
 #
-# TRUST TIERS (architecture §15/§16):
+# TRUST TIERS:
 #   [pref]   repo overrides operator config
 #   [safety] operator/org is the ceiling; a repo may only TIGHTEN these, never
 #            loosen them. Loosening values are clamped back at config-load and a

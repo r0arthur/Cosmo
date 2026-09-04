@@ -1,7 +1,7 @@
-"""Disclosure draft (architecture §13).
+"""Disclosure draft.
 
 Builds the *private* advisory that would go to the maintainer contact. This is a
-private channel to the maintainer, so — unlike the public-comment gate (§12) —
+private channel to the maintainer, so — unlike the public-comment gate —
 the draft includes the technical detail and PoC needed to reproduce and fix. It
 is only ever a draft: producing one sends nothing. CVE is left `pending` because
 assignment is routed through the maintainer or a CNA, never self-announced.

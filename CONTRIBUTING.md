@@ -112,24 +112,24 @@ All of it must pass before a merge.
    test. We don't merge behavior that isn't proven under test.
 4. **Match the house style.** Read the module you're editing first; mirror its
    naming, comment density, and idiom. Docstrings explain the *why* (and cite the
-   architecture section / RISK id where relevant), not the *what*.
+   relevant RISK id where applicable), not the *what*.
 5. **Keep the plugin surface in sync.** If you add or rename an interactive
    command, run `cosmo plugin sync` and commit the regenerated files; CI runs
    `cosmo plugin check` and fails on drift.
-6. **Open a PR** describing what changed, which architecture section / RISK id it
-   touches, and how you tested it.
+6. **Open a PR** describing what changed, which RISK id it touches (if any),
+   and how you tested it.
 
 ## Commit & PR conventions
 
 - **Branch** from `main`: `feature/<short-name>` or `fix/<short-name>`.
 - **One logical change per PR.** Small, reviewable diffs merge fast.
 - **Commit messages**: imperative subject, a body explaining *why*, and cite the
-  architecture section (e.g. `§9a`) or RISK id when relevant. Recent history uses
+  relevant RISK id when applicable. Recent history uses
   a conventional-commit prefix (`feat:`, `fix:`, `ci:`, `docs:`) — follow it.
 - Reference the issue the PR closes.
 
 There are no issue or PR templates in `.github/`; describe what changed, which
-RISK id or architecture section it touches, and how you tested it.
+RISK id it touches (if any), and how you tested it.
 
 ## Adding a test for a new feature
 
@@ -196,7 +196,7 @@ broker, or have an untrusted repo override the reviewer — please **do not open
 public issue**. Report it privately to the maintainer
 (<karthur0822@gmail.com>) with a repro, and give us a chance to fix it under a
 coordinated-disclosure window before publishing. cosmo holds itself to the same
-disclosure discipline (§13) it applies to the code it reviews.
+disclosure discipline it applies to the code it reviews.
 
 ## Code of conduct
 

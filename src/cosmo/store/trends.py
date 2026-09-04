@@ -1,8 +1,8 @@
-"""Trend + findings store (architecture §14).
+"""Trend + findings store.
 
 A lightweight SQLite store recording findings and their lifecycle over time per
-target: introduced vs. fixed, noisiest rules (feeds the §10 skills loop), and the
-disclosure queue (§13). Kept separate from the aggregator — the engine stays
+target: introduced vs. fixed, noisiest rules (feeds the skills loop), and the
+disclosure queue. Kept separate from the aggregator — the engine stays
 pure; a trigger adapter records each scan here.
 """
 from __future__ import annotations
@@ -140,7 +140,7 @@ class TrendStore:
         return dict(sorted(out.items()))
 
     def noisiest_rules(self, target: str, min_samples: int = 3) -> list[tuple[str, int, float]]:
-        """(category, samples, waived_fraction) for categories judged noisy. Feeds §10."""
+        """(category, samples, waived_fraction) for categories judged noisy. Feeds."""
         rows = self._conn.execute(
             "SELECT category, COUNT(*) n, SUM(waived) w FROM findings "
             "WHERE target=? AND category IS NOT NULL GROUP BY category", (target,)
@@ -150,7 +150,7 @@ class TrendStore:
 
     def upsert(self, target: str, f: Finding, now: float | None = None) -> None:
         """Insert or refresh a single finding without the absent-as-fixed sweep
-        that `record_scan` performs. Used by the disclosure workflow (§13) to
+        that `record_scan` performs. Used by the disclosure workflow to
         ensure a finding is tracked before a status is attached to it."""
         now = now if now is not None else time.time()
         if not f.fingerprint:
@@ -173,7 +173,7 @@ class TrendStore:
                  f.confirmation_status.value, int(f.waived), now, now))
         self._conn.commit()
 
-    # --- disclosure queue (§13) --------------------------------------------
+    # --- disclosure queue --------------------------------------------
 
     def set_disclosure_status(self, target: str, fingerprint: str, status: str) -> None:
         self._conn.execute(

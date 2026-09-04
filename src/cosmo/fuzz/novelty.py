@@ -1,4 +1,4 @@
-"""Novelty check (architecture §7).
+"""Novelty check.
 
 Cross-references each deduplicated crash against the NVD/CVE database and the
 repo's own issue tracker to **flag likely duplicates** — never to assert

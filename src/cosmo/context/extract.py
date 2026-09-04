@@ -1,4 +1,4 @@
-"""Signal extraction from ingested context (architecture §4).
+"""Signal extraction from ingested context.
 
 Pulls the security-relevant signal out of issue/comment text: keywords, CVE
 references, stack-trace indicators, and referenced file paths. Output is

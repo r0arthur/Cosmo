@@ -1,4 +1,4 @@
-"""Egress modes and the authorization decision type (architecture §9a).
+"""Egress modes and the authorization decision type.
 
 The mode is stamped on every outbound request and is what makes "no code path
 to an arbitrary external target" a structural property rather than a convention:
@@ -13,10 +13,10 @@ from enum import Enum
 
 
 class Mode(str, Enum):
-    SANDBOX = "sandbox"        # §6/§7 — own build only; internal net + provisioning allowlist
-    EXTERNAL = "external"      # §9 — authorized live target; requires an active /scope
-    DISCLOSURE = "disclosure"  # §13 — configured disclosure endpoints only
-    PROVIDER = "provider"      # §8 — model API egress; only allow-listed provider hosts
+    SANDBOX = "sandbox" # — own build only; internal net + provisioning allowlist
+    EXTERNAL = "external" # — authorized live target; requires an active /scope
+    DISCLOSURE = "disclosure" # — configured disclosure endpoints only
+    PROVIDER = "provider" # — model API egress; only allow-listed provider hosts
 
     def __str__(self) -> str:  # noqa: D105
         return self.value

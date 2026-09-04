@@ -602,7 +602,7 @@ def _run_trufflehog(root: str, ev=None, skipped: list[str] | None = None,
     credential's own provider to see whether it still works. That is also why it
     is off unless an operator asks for it — verification transmits candidate
     secrets out of the network to third parties that are not the model provider
-    and never pass the §9a egress broker. A repo cannot turn it on; the key has
+    and never pass the egress broker. A repo cannot turn it on; the key has
     no clamp rule, so the safety merge ignores and warns on a repo value.
 
     Output is JSON-lines on stdout; its own logs go to stderr, which `_sh` drops.

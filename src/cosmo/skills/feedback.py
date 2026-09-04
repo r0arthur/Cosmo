@@ -1,4 +1,4 @@
-"""Skills enhancement feedback loop (architecture §10).
+"""Skills enhancement feedback loop.
 
 Tracks per-skill confirmation rate over time, and when a skill proves noisy it
 DRAFTS a proposed edit — never a silent auto-edit. Proposals are meant to go

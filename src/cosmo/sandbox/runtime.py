@@ -1,4 +1,4 @@
-"""Container runtime + isolation spec (architecture §6).
+"""Container runtime + isolation spec.
 
 This stage runs untrusted, potentially adversarial code, so the isolation
 requirements are non-negotiable. They live in ContainerSpec and are translated

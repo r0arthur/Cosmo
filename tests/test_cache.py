@@ -1,4 +1,4 @@
-"""Incremental scanning cache — step 12 (architecture §15)."""
+"""Incremental scanning cache — step 12."""
 from cosmo.cache import (
     Cache,
     cache_or_run,

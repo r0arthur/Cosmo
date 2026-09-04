@@ -1,4 +1,4 @@
-"""SARIF 2.1.0 renderer (architecture §12) — CI-consumable structured output.
+"""SARIF 2.1.0 renderer — CI-consumable structured output.
 
 Local artifact for CI tooling; the public-comment gate does not apply.
 """

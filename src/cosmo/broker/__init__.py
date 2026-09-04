@@ -1,4 +1,4 @@
-"""Egress broker (architecture §9a, build step 7) — the single guarded network
+"""Egress broker (build step 7) — the single guarded network
 chokepoint every network-touching mode routes through.
 
 Built before the sandbox (step 8) and external-target mode (step 18) that depend

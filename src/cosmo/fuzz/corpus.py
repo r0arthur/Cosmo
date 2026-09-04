@@ -1,4 +1,4 @@
-"""Persistent seed corpus (architecture §7).
+"""Persistent seed corpus.
 
 Carried forward between campaigns per repo so coverage compounds instead of
 resetting each run. One directory per harness under `.cosmo/corpus/`, content-

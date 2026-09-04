@@ -1,4 +1,4 @@
-"""Request log (architecture §9a / §9).
+"""Request log.
 
 Every decision is logged HERE, at the chokepoint, so a tool that forgets to log
 cannot sidestep it. This log doubles as the record a bug-bounty program owner

@@ -1,4 +1,4 @@
-"""Claude Code plugin/skill integration (architecture §17, build step 20).
+"""Claude Code plugin/skill integration (build step 20).
 
 The final build step: cosmo ships as a Claude Code plugin/skill (`/cosmo-review`
 and the `/cosmo-*` command family) that reuses Claude Code's auth/session/
@@ -14,7 +14,7 @@ guarded interactive dispatcher, and cannot widen past it.
   `check_plugin` reports drift without writing.
 - `bridge` — the in-process integration point: opens the same `Session` and
   routes every line through the same `dispatch`, with the operator config as the
-  §15 ceiling.
+   ceiling.
 """
 from .bridge import PluginBridge, open_session
 from .manifest import (

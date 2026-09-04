@@ -1,8 +1,8 @@
-"""Scope, sandbox, and disclosure policies (architecture §9/§9a).
+"""Scope, sandbox, and disclosure policies.
 
 Host matching is deliberately simple and explicit: exclusions are checked first
 and always win, so a declared out-of-scope asset is refused outright, never
-warned-and-continued (§9).
+warned-and-continued.
 
 A safety net independent of scope: any target that resolves to a loopback,
 private, link-local, or cloud-metadata address is refused in external-facing
@@ -69,7 +69,7 @@ def is_metadata_address(host: str) -> bool:
 
 @dataclass
 class Scope:
-    """An authorized external-target declaration (`/scope`, §9)."""
+    """An authorized external-target declaration (`/scope`)."""
 
     program: str
     includes: list[str] = field(default_factory=list)
@@ -84,7 +84,7 @@ class Scope:
 
 @dataclass
 class SandboxPolicy:
-    """What SANDBOX-mode egress may reach (architecture §6)."""
+    """What SANDBOX-mode egress may reach."""
 
     internal_hosts: list[str] = field(default_factory=list)   # sandbox-internal network
     provisioning_allowlist: list[str] = field(default_factory=list)  # package registries / proxy
@@ -102,7 +102,7 @@ class SandboxPolicy:
 
 @dataclass
 class DisclosurePolicy:
-    """Endpoints DISCLOSURE-mode egress may reach (architecture §13)."""
+    """Endpoints DISCLOSURE-mode egress may reach."""
 
     allowed_endpoints: list[str] = field(default_factory=list)
 
@@ -112,7 +112,7 @@ class DisclosurePolicy:
 
 @dataclass
 class ProviderPolicy:
-    """Hosts PROVIDER-mode egress (the model API, §8) may reach.
+    """Hosts PROVIDER-mode egress (the model API) may reach.
 
     Model-provider egress is operator-credentialed, but routing it through the
     broker gives one audit log of every model call and — crucially — the same

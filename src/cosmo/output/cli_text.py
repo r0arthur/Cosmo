@@ -1,4 +1,4 @@
-"""CLI text renderer (architecture §12) — the default, operator-facing output.
+"""CLI text renderer — the default, operator-facing output.
 
 Local output shows full detail; the public-comment gate does not apply here.
 """

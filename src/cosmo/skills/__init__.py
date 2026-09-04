@@ -1,4 +1,4 @@
-"""Skills system (architecture §10, build step 10).
+"""Skills system (build step 10).
 
 Repo- and org-level skill files, a matcher that injects only skills relevant to
 the changed files, a trusted/untrusted split so repo-provided skills can't

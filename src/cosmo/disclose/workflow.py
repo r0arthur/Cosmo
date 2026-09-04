@@ -1,12 +1,12 @@
-"""Coordinated disclosure workflow (architecture §13).
+"""Coordinated disclosure workflow.
 
 The hard property, from the design review: **cosmo drafts and queues; nothing
 leaves the machine without explicit human approval**, and every send routes
-through the egress broker (§9a) in DISCLOSURE mode — so the delivery target must
+through the egress broker in DISCLOSURE mode — so the delivery target must
 be an operator-configured disclosure endpoint, not whatever a repo's SECURITY.md
 happens to name.
 
-Lifecycle in the findings store (§14): `queued` (drafted, nothing sent) →
+Lifecycle in the findings store: `queued` (drafted, nothing sent) →
 `reported` (approved + delivered) → `acknowledged` → `patched` → `disclosed`.
 `queued` is cosmo's own pre-approval state; the four the architecture lists all
 follow a human action.

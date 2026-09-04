@@ -1,6 +1,6 @@
-"""Harness-agnostic interactive driver (architecture §17, option 2).
+"""Harness-agnostic interactive driver (option 2).
 
-The Claude Code plugin (§17 option 1) reuses Claude Code's *agent loop* to turn
+The Claude Code plugin (option 1) reuses Claude Code's *agent loop* to turn
 natural language into cosmo commands. That couples the orchestration — not the
 review model, but the loop that drives it — to Claude Code's runtime. This module
 is the other option: cosmo's own minimal agent loop, so the whole interactive
@@ -20,7 +20,7 @@ run. The **driver** is the containment boundary:
   * Therefore the orchestrating model is contained to *exactly* the surface a
     human at the REPL has: it cannot run a shell, reach past the dispatcher, or
     loosen a safety-tier setting. All the downstream guardrails (config trust
-    tiers, the §11 gate, the egress broker, disclosure's human-approval step)
+    tiers, the gate, the egress broker, disclosure's human-approval step)
     still apply, because nothing bypasses `dispatch`.
 
 Provider-agnostic by construction: the driver never imports a provider. It takes
@@ -251,7 +251,7 @@ def provider_planner(provider) -> Planner:
 
 def resolve_planner(config, *, provider=None) -> "tuple[Planner, list[str]]":
     """Pick the planner for a config: a live provider when one is available and
-    allowed, else the no-model rule-based planner. Honors the §8 data-governance
+    allowed, else the no-model rule-based planner. Honors the data-governance
     gate — an off-box vendor a sensitive repo hasn't allowed is NOT used, and its
     `complete()` is never called, so nothing is exported to build a plan."""
     from ..providers import resolve_primary, vendor_allowed   # lazy: keep module provider-agnostic
@@ -269,7 +269,7 @@ def resolve_planner(config, *, provider=None) -> "tuple[Planner, list[str]]":
         notes.append(f"planner: provider {provider.name!r} can't complete "
                      f"(no SDK/key) — using the no-model planner")
         return rule_based_planner, notes
-    # Planning egress also crosses the broker (§8 + §9a).
+    # Planning egress also crosses the broker.
     if getattr(provider, "broker", None) is None:
         from ..providers.egress import provider_broker_from_config
         try:

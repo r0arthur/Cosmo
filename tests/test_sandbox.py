@@ -1,4 +1,4 @@
-"""Dynamic sandbox — step-8 safety properties (architecture §6)."""
+"""Dynamic sandbox — step-8 safety properties."""
 import pytest
 
 from cosmo.broker import EgressBroker, Mode

@@ -1,14 +1,14 @@
-"""Coordinated disclosure workflow (architecture §13, build step 18).
+"""Coordinated disclosure workflow (build step 18).
 
 For confirmed, high-severity, unpatched findings from any source. cosmo **drafts
 and queues** a private advisory to the maintainer contact from the repo's
 SECURITY.md; **nothing leaves the machine without explicit human approval**, and
-every send routes through the egress broker (§9a) in DISCLOSURE mode so the
+every send routes through the egress broker in DISCLOSURE mode so the
 delivery target must be an operator-configured endpoint. CVE assignment is routed
 via the maintainer/CNA, never self-announced. The queue and its status
 (`queued`→`reported`→`acknowledged`→`patched`→`disclosed`) live in the findings
-store (§14). Triggered manually with `/disclose <finding-id>` from an interactive
-session (§7).
+store. Triggered manually with `/disclose <finding-id>` from an interactive
+session.
 """
 from .draft import DisclosureDraft, draft_report
 from .eligibility import Eligibility, is_disclosable
