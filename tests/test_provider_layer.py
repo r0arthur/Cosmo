@@ -1,4 +1,4 @@
-"""Multi-model provider layer — step 9 (architecture §8)."""
+"""Multi-model provider layer — step 9."""
 from cosmo.config import Config, load_config
 from cosmo.diff.resolver import Diff
 from cosmo.findings import Finding

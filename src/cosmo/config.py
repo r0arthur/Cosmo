@@ -1,10 +1,10 @@
-"""Configuration loading with the two-tier trust model (architecture §15/§16, RISK-01).
+"""Configuration loading with the two-tier trust model (RISK-01).
 
 A scanned repo is UNTRUSTED input, and `cosmo.yaml` is checked into that repo.
 So config resolves under two opposite rules:
 
   * Preference tier (threshold, ignore_paths, providers, ...): repo overrides
-    operator, per the §8 resolution order. Harmless.
+    operator, per the resolution order. Harmless.
   * Safety tier (sandbox.* isolation and caps, fuzzing.*, external_targets.*,
     disclosure.*, triggers.*): operator/org is the ceiling. A repo may only
     *tighten* a safety key, never loosen it — enforced here at config-load by
@@ -277,7 +277,7 @@ BUILTIN_OPERATOR_DEFAULTS: dict[str, Any] = {
 def load_config(target_dir: str | os.PathLike, operator_config: str | os.PathLike | None = None) -> Config:
     """Resolve operator config (the ceiling) with the target repo's cosmo.yaml.
 
-    Precedence and clamping follow §15: preference keys repo-over-operator,
+    Precedence and clamping follow: preference keys repo-over-operator,
     safety keys operator-only with repo values clamped to tighten-only.
     """
     operator = copy.deepcopy(BUILTIN_OPERATOR_DEFAULTS)

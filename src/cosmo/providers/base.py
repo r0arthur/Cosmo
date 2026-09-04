@@ -1,4 +1,4 @@
-"""Model provider interface (architecture §8).
+"""Model provider interface.
 
 Common shape across backends:  review(diff, context, findings_so_far) -> Finding[]
 
@@ -6,7 +6,7 @@ Each provider self-declares:
   * `roles`          — which pipeline roles it's eligible for, so a smaller/local
                        model isn't assumed interchangeable everywhere.
   * `vendor` /
-    `exports_source` — the data-governance boundary (§8): enabling a hosted
+    `exports_source` — the data-governance boundary: enabling a hosted
                        provider exports the target's source to that vendor, which
                        the resolution layer gates on repo/org data sensitivity.
 """
@@ -38,7 +38,7 @@ class ModelProvider(Protocol):
 
     def complete(self, prompt: str, *, max_tokens: int = 1024) -> str:
         """General text completion — the seam the harness-agnostic agent driver
-        (§17 option 2) uses to orchestrate on any provider. Governed by the same
-        §8 data-sensitivity gate as `review`: it exports whatever is in `prompt`
+        (option 2) uses to orchestrate on any provider. Governed by the same
+         data-sensitivity gate as `review`: it exports whatever is in `prompt`
         to `vendor` when `exports_source` is True."""
         ...

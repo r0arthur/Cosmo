@@ -1,9 +1,9 @@
-"""GitHub Action trigger adapter (architecture §2).
+"""GitHub Action trigger adapter.
 
-A thin caller of run_review for the PR-diff trigger. Per §2: `medium+` threshold,
+A thin caller of run_review for the PR-diff trigger. Per: `medium+` threshold,
 PR-comment / Checks + SARIF output, configurable blocking, static + LLM (the
 dynamic sandbox is opt-in and out of the default path here). This is where the
-public-comment gate (§12, RISK-05) governs a real outbound post: the PR comment
+public-comment gate (RISK-05) governs a real outbound post: the PR comment
 is rendered through `render_pr_comment`, which withholds confirmed/sensitive
 findings and posts, at most, a generic acknowledgment — never a PoC.
 """
@@ -58,7 +58,7 @@ def run_github_action(
         Path(sarif_path).write_text(render_sarif(report))
 
     if post:
-        body = render_pr_comment(report)   # gated — withholds confirmed/sensitive detail (§12)
+        body = render_pr_comment(report) # gated — withholds confirmed/sensitive detail
         (poster or _gh_post)(pr_ref or scan_target, body)
 
     actionable = [f for f in report.findings if not f.waived]

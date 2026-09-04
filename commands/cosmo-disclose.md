@@ -1,5 +1,5 @@
 ---
-description: cosmo /disclose — <finding-id> — draft + queue a coordinated disclosure (§13); sends nothing
+description: cosmo /disclose — <finding-id> — draft + queue a coordinated disclosure; sends nothing
 allowed-tools: Bash(cosmo:*), Bash(python -m cosmo:*)
 ---
 

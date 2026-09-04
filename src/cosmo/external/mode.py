@@ -1,10 +1,10 @@
-"""Authorized external-target mode (architecture §9).
+"""Authorized external-target mode.
 
 Testing a live target the user is *separately authorized* to test (a bug-bounty
-program, an approved pentest). Distinct from §6/§7, which only ever touch a build
-cosmo provisioned itself — and there is deliberately **no code path between the
-two**. An external host is reachable only through an explicit, logged `/scope`
-declaration, and every reach is mediated by the egress broker (§9a) in EXTERNAL
+program, an approved pentest). Distinct from sandbox confirmation and fuzzing,
+which only ever touch a build cosmo provisioned itself — and there is
+deliberately **no code path between the two**. An external host is reachable only through an explicit, logged `/scope`
+declaration, and every reach is mediated by the egress broker in EXTERNAL
 mode: scope/exclusion check on the resolved host, one global rate-limit budget,
 forbidden-address (SSRF) refusal, and logging. This module is a thin driver over
 that broker — it does not re-implement any of the enforcement.
@@ -55,7 +55,7 @@ class ExternalTargetMode:
         `transport` (optional) lets the broker follow + re-check redirects; when
         given, the broker performs the request and the runner interprets it."""
         if self.scope is None:
-            raise ScopeRequired("declare a /scope before any external recon (§9)")
+            raise ScopeRequired("declare a /scope before any external recon")
         if transport is not None:
             status, headers, body = self.broker.request(Mode.EXTERNAL, url, tool=tool,
                                                         transport=transport)

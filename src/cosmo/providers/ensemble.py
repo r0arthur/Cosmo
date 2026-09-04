@@ -1,4 +1,4 @@
-"""Ensemble cross-check (architecture §8).
+"""Ensemble cross-check.
 
 Optional mode: high-severity findings from the primary reviewer are cross-checked
 with a SECOND model, and agreement is required before they're surfaced as

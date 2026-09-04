@@ -1,4 +1,4 @@
-"""Model-provider API egress routed through the broker (§8 + §9a)."""
+"""Model-provider API egress routed through the broker."""
 import pytest
 
 from cosmo.broker import EgressBroker, EgressDenied, Mode

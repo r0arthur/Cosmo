@@ -1,9 +1,9 @@
-"""PR/issue comment renderer (architecture §12) — a PUBLIC channel.
+"""PR/issue comment renderer — a PUBLIC channel.
 
 Every finding passes through the public-comment gate (RISK-05) before it can
 appear here. Confirmed-exploitable and unknown-sensitivity high-severity
 findings are withheld with only a generic acknowledgment; their detail is routed
-to coordinated disclosure (§13, build step 18 — out of MVP scope, so here they
+to coordinated disclosure (build step 18 — out of MVP scope, so here they
 are simply withheld and counted).
 """
 from __future__ import annotations

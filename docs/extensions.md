@@ -5,8 +5,8 @@ module that adds any combination of:
 
 | Contribution | What it adds | Surfaced as |
 |---|---|---|
-| **skill** | extra review guidance for the LLM stage | injected when a matching file changes (§10) |
-| **detector** | an extra finding source | findings joined to the normal pipeline (dedupe → waiver → §11 gate) |
+| **skill** | extra review guidance for the LLM stage | injected when a matching file changes |
+| **detector** | an extra finding source | findings joined to the normal pipeline (dedupe → waiver → gate) |
 | **command** | an interactive slash-command | `/x-<name>` in a live session |
 
 Everything an extension contributes flows through the **same guardrails** as

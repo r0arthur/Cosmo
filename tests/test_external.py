@@ -1,4 +1,4 @@
-"""Authorized external-target mode — step 19 (architecture §9)."""
+"""Authorized external-target mode — step 19."""
 import pytest
 
 from cosmo.broker import EgressDenied

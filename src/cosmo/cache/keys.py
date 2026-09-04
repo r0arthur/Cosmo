@@ -1,4 +1,4 @@
-"""Cache-key derivation (architecture §15, RISK: dynamic-cache soundness).
+"""Cache-key derivation (RISK: dynamic-cache soundness).
 
 The whole point of this module is that **cache keys differ by stage because
 their inputs do**:
@@ -54,7 +54,7 @@ def dynamic_key(
     lockfile_hash: str,
     toolchain_version: str,
 ) -> str:
-    """Composite key — the load-bearing one (§15). Not a single file hash."""
+    """Composite key — the load-bearing one. Not a single file hash."""
     return (
         f"dynamic:{toolchain_version}:{lockfile_hash}:{files_digest(file_contents)}"
     )

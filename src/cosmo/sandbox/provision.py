@@ -1,4 +1,4 @@
-"""Environment provisioning helpers (architecture §6.1, RISK-02 / RISK-03).
+"""Environment provisioning helpers (RISK-02 / RISK-03).
 
 Two safety properties live here:
 

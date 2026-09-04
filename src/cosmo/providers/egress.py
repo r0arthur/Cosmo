@@ -1,8 +1,8 @@
-"""Provider egress through the broker (architecture §8 + §9a).
+"""Provider egress through the broker.
 
 Model-provider API calls now cross the same single chokepoint as every other
 network touch. They are operator-credentialed, not untrusted, so PROVIDER mode's
-job is not to gate *whether* to talk to the model — that is the §8
+job is not to gate *whether* to talk to the model — that is the
 data-governance decision (`vendor_allowed`) — but to give model egress the same
 two structural guarantees the broker gives everything else:
 

@@ -161,8 +161,8 @@ class LocalGit:
 class GitHubHistory:
     """History read straight off the GitHub API — no clone on disk.
 
-    Same access pattern as the PR resolver (§3): the `gh` CLI, already
-    authenticated. Reading is unrestricted; posting stays gated (§12).
+    Same access pattern as the PR resolver: the `gh` CLI, already
+    authenticated. Reading is unrestricted; posting stays gated.
     """
 
     kind = "github"

@@ -1,4 +1,4 @@
-"""Waiver / baseline suppression (architecture §11, build step 5, RISK-07).
+"""Waiver / baseline suppression (build step 5, RISK-07).
 
 Prioritized early because noise kills adoption before any other stage compounds
 it. The load-bearing detail is the fingerprint: it is **content-based, not
@@ -12,7 +12,7 @@ string/number literals with placeholders, so cosmetic edits don't change it but
 a real change to the sink does.
 
 MVP stores the baseline as JSON at <target>/.cosmo/baseline.json. Migrating to
-the SQLite trend store is build step 15 (§14), out of MVP scope.
+the SQLite trend store is build step 15, out of MVP scope.
 """
 from __future__ import annotations
 

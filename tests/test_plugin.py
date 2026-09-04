@@ -1,4 +1,4 @@
-"""Claude Code plugin/skill integration — step 20 (architecture §17)."""
+"""Claude Code plugin/skill integration — step 20."""
 import json
 
 import pytest
@@ -54,10 +54,10 @@ def test_every_command_is_tool_narrowed():
 
 
 def test_public_posting_is_never_a_plugin_capability():
-    # the review command explicitly refuses to post; posting stays behind §11.
+    # the review command explicitly refuses to post; posting stays behind.
     review = next(s for s in command_specs() if s.name == "review")
     assert "Do NOT post anything to GitHub" in review.body
-    assert "§11" in review.body
+    assert "fail-closed disclosure gate" in review.body
 
 
 # --- manifest is well-formed and versioned off the package --------------------

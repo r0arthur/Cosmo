@@ -1,5 +1,5 @@
 ---
-description: cosmo /model — [provider] — switch model for the session (§8 resolution + data-governance)
+description: cosmo /model — [provider] — switch model for the session (resolution + data-governance)
 allowed-tools: Bash(cosmo:*), Bash(python -m cosmo:*)
 ---
 

@@ -1,7 +1,7 @@
-"""Persistent cache store (architecture §15).
+"""Persistent cache store.
 
 A lightweight JSON-backed key→value store at <target>/.cosmo/cache.json. The
-findings/trend store (SQLite, §14) is build step 14; this is just the
+findings/trend store (SQLite) is build step 14; this is just the
 incremental-scan cache, kept simple and inspectable. Lives under .cosmo/, which
 is gitignored, so it never lands in the scanned repo.
 """

@@ -1,10 +1,10 @@
-"""Context ingestion — issues/comments/discussions (architecture §4).
+"""Context ingestion — issues/comments/discussions.
 
 Pulls signal from the repo's human-generated history to PRIORITIZE review. Two
 boundaries are load-bearing:
 
   * Reading is unrestricted (same access as cloning the repo); POSTING is gated
-    separately (§12), and this module never posts.
+    separately, and this module never posts.
   * Issue/comment text is attacker-controllable — anyone can open an issue. So
     ingestion produces a structured *signal set* (keywords, CVEs, referenced
     paths), never ground truth and never raw untrusted text injected into the
