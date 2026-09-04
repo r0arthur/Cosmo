@@ -165,6 +165,23 @@ works as a CI gate. Two tools cannot report their own version — Debian's
 launcher has no version flag — and those show as `version unknown` rather than
 being assumed fine.
 
+### A scanner shows `not installed` — how do I get it?
+
+`./scripts/install.sh` fetches all seven automatically on a fresh install (see
+[installation.md](installation.md)), so this is usually about a machine that
+installer never ran on, or one where a fetch failed the first time (offline,
+rate-limited, or no release asset for that OS/architecture). Fetch it directly:
+
+```bash
+cosmo tools --install              # every one of the five with no pip package
+cosmo tools --install gitleaks     # just one
+```
+
+`semgrep`/`bandit` aren't in that list — they come from `pip install
+semgrep`/`pip install bandit` instead (what `scripts/install.sh` already does).
+`cosmo tools --install semgrep` is refused and says so, rather than silently
+doing nothing.
+
 ### `static:dep-audit (no dependency scanner ran ...)`
 
 Dependency auditing is trivy's job, and trivy is not installed or not in
