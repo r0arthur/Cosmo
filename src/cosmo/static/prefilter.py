@@ -211,11 +211,14 @@ def _run_one(tool: Tool, root: str, ev, config=None) -> tuple[list[Finding], lis
     except subprocess.TimeoutExpired as exc:
         note = (f"static:{tool.name} timed out after {exc.timeout}s — "
                 f"NOT scanned ({tool.covers})")
-        ev.stage_skipped("static", note)
+        # `tool=` on every static-stage event, success or not — a caller
+        # tallying scanners_run/succeeded/failed/skipped has to tell them apart
+        # by more than parsing English out of `message`.
+        ev.stage_skipped("static", note, tool=tool.name)
         return [], own + [note]
     except Exception as exc:
         note = f"static:{tool.name} (error: {exc})"
-        ev.error(f"{tool.name} failed: {exc}", stage="static")
+        ev.error(f"{tool.name} failed: {exc}", stage="static", tool=tool.name)
         return [], own + [note]
 
 
@@ -234,7 +237,7 @@ def run_static_prefilter(target_dir: str, events=None,
         if tool not in selected:
             note = (f"static:{tool.name} (not enabled in static.tools) — "
                     f"{tool.covers} NOT scanned")
-            ev.stage_skipped("static", note)
+            ev.stage_skipped("static", note, tool=tool.name)
 
     runnable: list[Tool] = []
     skipped: list[str] = []
@@ -243,7 +246,8 @@ def run_static_prefilter(target_dir: str, events=None,
             skipped.append(f"static:{tool.name} (not installed — {tool.covers} "
                            f"NOT scanned; install: {tool.install})")
             ev.stage_skipped("static",
-                             f"{tool.name} not installed — {tool.covers} not scanned")
+                             f"{tool.name} not installed — {tool.covers} not scanned",
+                             tool=tool.name)
         else:
             runnable.append(tool)
 

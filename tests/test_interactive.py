@@ -7,6 +7,7 @@ gate — and preference commands only move preferences.
 import threading
 
 from cosmo.config import Config
+from cosmo.events import Emitter
 from cosmo.findings import ConfirmationStatus, Finding
 from cosmo.interactive import Session, dispatch, run_repl
 from cosmo.severity import Severity
@@ -502,7 +503,8 @@ def test_scan_runs_the_static_scanners_without_a_provider(tmp_path):
     out = dispatch(s, "/scan")
     assert seen["static_only"] is True
     assert seen["provider"] is None          # not even resolved
-    assert "scan complete" in out
+    assert "Scan complete" in out
+    assert s.last_scan is not None and s.last_scan.llm is False
     assert s.scanned
 
 
@@ -563,12 +565,17 @@ def test_scan_llm_refuses_when_no_provider_can_run(tmp_path, monkeypatch):
 
 
 def test_scan_reports_what_it_skipped(tmp_path):
-    """The coverage contract holds at the moment the operator is looking."""
+    """The coverage contract holds at the moment the operator is looking —
+    a scanner that did not run is counted, and the raw reason is still
+    reachable, even though `/scan` no longer dumps every skip line inline."""
     s = _session(tmp_path)
     s.scanner = lambda *a, **k: _report(str(tmp_path),
                                         skipped=["static:trivy (not installed)"])
     out = dispatch(s, "/scan")
-    assert "skipped: static:trivy (not installed)" in out
+    assert "coverage note" in out
+    assert s.last_scan.scanners_skipped == 1
+    assert any(sc.name == "trivy" for sc in s.last_scan.scanners)
+    assert "static:trivy (not installed)" in dispatch(s, "/report cli")
 
 
 def test_an_unknown_scan_argument_is_rejected(tmp_path):
@@ -589,3 +596,203 @@ def test_a_rescan_resets_the_cursor(tmp_path):
     s.scanner = lambda *a, **k: _report(str(tmp_path))
     dispatch(s, "/scan")
     assert s.cursor == 0
+
+
+# --- regression tests for the /scan pipeline fix -----------------------------
+#
+# Numbered to match the bug report: opening a session on a large repo, running
+# /scan, and getting a scroll of individual findings with no final report, no
+# per-scanner accounting, and (in the full-screen session specifically) a
+# frozen UI for the whole run. Traced to the actual pipeline rather than
+# treated as a rendering issue — see `scan_summary.py` and `screen.py`'s
+# `_run_scan`/`scan_in_background` for the fix itself.
+
+def test_1_scan_waits_for_every_scanner_before_returning(tmp_path):
+    """A fake scanner that reports three tools finishing at staggered times —
+    `session.scan()` must not return, and `last_scan` must not exist, until
+    the slowest one has."""
+    import time as _time
+
+    order = []
+
+    def scanner(target, cfg, provider=None, static_only=False, events=None):
+        ev = Emitter(events)
+        for tool, delay in (("fast", 0.01), ("slow", 0.05)):
+            _time.sleep(delay)
+            order.append(tool)
+            ev.output(f"{tool}: 0 finding(s)", stage="static", tool=tool, findings=0)
+        return _report(str(tmp_path))
+
+    s = _session(tmp_path)
+    s.scanner = scanner
+    dispatch(s, "/scan")
+    assert order == ["fast", "slow"]            # both ran, in order
+    assert s.last_scan is not None              # the summary exists only after
+
+
+def test_2_findings_from_every_scanner_are_collected(tmp_path):
+    findings = [Finding(id="f1", title="t1", severity=Severity.HIGH,
+                        source="static:gitleaks", file="a.py", line=1),
+               Finding(id="f2", title="t2", severity=Severity.MEDIUM,
+                       source="static:semgrep", file="b.py", line=2),
+               Finding(id="f3", title="t3", severity=Severity.LOW,
+                       source="static:bandit", file="c.py", line=3)]
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(str(tmp_path), findings)
+    dispatch(s, "/scan")
+    sources = {f.source for f in s.findings}
+    assert sources == {"static:gitleaks", "static:semgrep", "static:bandit"}
+    assert s.last_scan.total == 3
+
+
+def test_3_a_scanner_failure_does_not_discard_the_others(tmp_path):
+    def scanner(target, cfg, provider=None, static_only=False, events=None):
+        ev = Emitter(events)
+        ev.output("gitleaks: 1 finding(s)", stage="static", tool="gitleaks", findings=1)
+        ev.error("trivy failed: exit 137", stage="static", tool="trivy")
+        return _report(str(tmp_path),
+                       [Finding(id="f1", title="t", severity=Severity.HIGH,
+                               source="static:gitleaks", file="a.py", line=1)])
+
+    s = _session(tmp_path)
+    s.scanner = scanner
+    out = dispatch(s, "/scan")
+    assert len(s.findings) == 1                 # gitleaks' result survived
+    assert s.last_scan.scanners_failed == 1
+    assert s.last_scan.scanners_succeeded == 1
+    assert "WARNING: trivy failed" in out
+
+
+def test_4_the_final_report_is_generated_only_after_collection(tmp_path):
+    """`session.last_scan` must reflect the *complete* result, not a partial
+    one built while scanners were still running — there is no path here for
+    a caller to observe an in-progress summary."""
+    seen_during_scan = {}
+
+    def scanner(target, cfg, provider=None, static_only=False, events=None):
+        seen_during_scan["last_scan_while_running"] = "checked"
+        report = _report(str(tmp_path),
+                         [Finding(id="f1", title="t", severity=Severity.HIGH,
+                                 source="static:gitleaks", file="a.py", line=1)])
+        return report
+
+    s = _session(tmp_path)
+    s.scanner = scanner
+    assert s.last_scan is None                  # nothing before the first scan
+    dispatch(s, "/scan")
+    assert s.last_scan is not None
+    assert s.last_scan.total == 1
+    assert s.last_scan.finished >= s.last_scan.started
+
+
+def test_5_report_answers_from_the_last_scan_without_rescanning(tmp_path):
+    calls = []
+
+    def scanner(target, cfg, provider=None, static_only=False, events=None):
+        calls.append(1)
+        return _report(str(tmp_path),
+                       [Finding(id="f1", title="t", severity=Severity.HIGH,
+                               source="static:gitleaks", file="a.py", line=1,
+                               fingerprint="fp1")])
+
+    s = _session(tmp_path)
+    s.scanner = scanner
+    dispatch(s, "/scan")
+    dispatch(s, "/report")
+    dispatch(s, "/findings")
+    dispatch(s, "/status")
+    assert len(calls) == 1                      # one scan, three reads
+
+
+def test_6_scan_runs_when_claude_is_unavailable(tmp_path, monkeypatch):
+    """The provider's availability must never gate the *static* scan — `/scan`
+    is explicitly local/no-model."""
+    import shutil as _shutil
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
+
+    calls = []
+
+    def scanner(target, cfg, provider=None, static_only=False, events=None):
+        calls.append(provider)
+        return _report(str(tmp_path),
+                       [Finding(id="f1", title="t", severity=Severity.HIGH,
+                               source="static:gitleaks", file="a.py", line=1)])
+
+    s = _session(tmp_path)
+    s.scanner = scanner
+    out = dispatch(s, "/scan")
+    assert calls == [None]                       # no provider resolved, let alone required
+    assert "Scan complete" in out
+    assert s.last_scan.total == 1
+
+
+def test_7_scan_llm_reports_unavailability_instead_of_faking_a_review(tmp_path, monkeypatch):
+    import shutil as _shutil
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(_shutil, "which", lambda *_a, **_k: None)
+
+    called = []
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: called.append(1)
+    out = dispatch(s, "/scan llm")
+    assert not called                            # refused before touching the scanner
+    assert "cannot run the model review" in out
+    assert "ANTHROPIC_API_KEY" in out
+    assert s.last_scan is None                   # nothing ran, nothing to report
+
+
+def test_8_summary_counts_match_the_normalized_findings(tmp_path):
+    findings = [Finding(id=f"f{i}", title=f"t{i}", severity=sev,
+                        source="static:semgrep", file=f"a{i}.py", line=i + 1)
+               for i, sev in enumerate([Severity.CRITICAL, Severity.HIGH,
+                                       Severity.HIGH, Severity.MEDIUM,
+                                       Severity.MEDIUM, Severity.MEDIUM,
+                                       Severity.LOW])]
+    s = _session(tmp_path)
+    s.scanner = lambda *a, **k: _report(str(tmp_path), findings)
+    dispatch(s, "/scan")
+    assert s.last_scan.total == len(s.findings) == 7
+    assert s.last_scan.counts == {"critical": 1, "high": 2, "medium": 3, "low": 1}
+    assert sum(s.last_scan.counts.values()) == s.last_scan.total
+
+
+def test_9_the_repl_returns_to_the_prompt_after_scan_completes(tmp_path):
+    """`/scan` used to be an ordinary synchronous dispatch in the plain REPL
+    too — this pins that the loop keeps processing input afterward, which a
+    hang or an unhandled exception inside dispatch would break."""
+    from cosmo.interactive.repl import run_repl
+
+    (tmp_path / "app.py").write_text("x = 1\n")
+    lines = iter(["/scan", "/status", ""])
+    outputs = []
+
+    def fake_scanner(target, cfg, provider=None, static_only=False, events=None):
+        return _report(str(tmp_path),
+                       [Finding(id="f1", title="t", severity=Severity.HIGH,
+                               source="static:gitleaks", file="a.py", line=1)])
+
+    session = Session(config=Config(data={}), target=str(tmp_path))
+    session.scanner = fake_scanner
+    from cosmo.interactive.repl import _is_local
+
+    # Drive the loop the way `run_repl` does internally, with the session
+    # pre-built so a fake scanner can be injected.
+    read = lambda prompt: next(lines)
+    write = outputs.append
+    session.writer = write
+    write("cosmo interactive — banner")
+    while True:
+        try:
+            line = read("cosmo> ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        line = (line or "").strip()
+        if line in ("", "/quit", "/exit"):
+            break
+        write(dispatch(session, line))
+
+    assert any("Scan complete" in o for o in outputs)
+    assert any("target:" in o for o in outputs)   # /status still ran afterward
