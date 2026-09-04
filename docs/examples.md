@@ -206,7 +206,7 @@ cosmo review . --model claude-cli
 Only skills whose `applies_to` globs match the changed files are injected.
 Because this one lives in the repo, it loads as **untrusted reference** — useful
 guidance, but it cannot suppress a finding. See
-[usage.md § Review skills](usage.md#review-skills).
+[usage.md — Review skills](usage.md#review-skills).
 
 ---
 

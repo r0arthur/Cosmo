@@ -145,7 +145,7 @@ class Extension:
 - **CommandHandler** `(session, args) -> str`, the same signature as builtin
   interactive commands. `session` gives you `.target`, `.config`, `.findings`.
 - **Skill**: the same convention as a repo skill — see
-  [usage.md § Review skills](usage.md#review-skills); `applies_to`
+  [usage.md — Review skills](usage.md#review-skills); `applies_to`
   is a list of globs matched against changed files.
 
 ## Testing your extension

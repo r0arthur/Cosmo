@@ -33,7 +33,7 @@ That is **not** "your code is fine". That is "almost nothing ran".
 
 Most likely nothing capable of finding it ran. Check `skipped:`. With no semgrep
 and no model configured, cosmo has almost no detection surface. See
-[getting-started § Making it actually review something](getting-started.md#making-it-actually-review-something).
+[getting-started — Making it actually review something](getting-started.md#making-it-actually-review-something).
 
 Second possibility: your finding is below the severity floor. Try
 `--threshold info`.
@@ -45,7 +45,7 @@ Third: it was waived. Check `cosmo baseline .`.
 No, for the static scan. For the AI review you need either the `claude` CLI
 logged in (uses your subscription, no separate billing) or an `ANTHROPIC_API_KEY`
 with the `anthropic` SDK installed. See
-[installation § Turning on the AI review](installation.md#turning-on-the-ai-review).
+[installation — Turning on the AI review](installation.md#turning-on-the-ai-review).
 
 ### Will it send my code to a third party?
 
